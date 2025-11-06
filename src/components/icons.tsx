@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 
-export function SteelGanttVisionIcon(props: SVGProps<SVGSVGElement>) {
+export function HrcLtGanttChartIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

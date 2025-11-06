@@ -10,7 +10,7 @@ import { parseExcel } from "@/lib/excel-parser";
 import { validateAndTransform } from "@/lib/validator";
 import type { GanttHeat, ValidationError, ExcelRow, Operation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { SteelGanttVisionIcon } from "@/components/icons";
+import { HrcLtGanttChartIcon } from "@/components/icons";
 import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -209,9 +209,9 @@ export default function Home() {
     <div className="flex flex-col min-h-screen bg-muted/20">
       <header className="sticky top-0 z-20 flex items-center h-16 px-4 border-b bg-background/80 backdrop-blur-sm md:px-6">
         <div className="flex items-center gap-3">
-            <SteelGanttVisionIcon className="w-8 h-8 text-primary" />
+            <HrcLtGanttChartIcon className="w-8 h-8 text-primary" />
             <h1 className="text-2xl font-bold tracking-tighter font-headline">
-              Steel Gantt Vision
+              HRC1.LT Gantt Chart
             </h1>
         </div>
       </header>

@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Steel Gantt Vision',
+  title: 'HRC1.LT Gantt Chart',
   description: 'Visualize your steelmaking process schedule',
 };
 
