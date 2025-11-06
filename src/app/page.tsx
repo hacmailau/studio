@@ -1,14 +1,14 @@
 
 "use client";
 
-import { useState } from "react";
-import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, ChevronDown } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle } from "lucide-react";
 import { FileUploader } from "@/components/file-uploader";
 import { GanttChart } from "@/components/gantt-chart";
 import { ValidationErrors } from "@/components/validation-errors";
 import { parseExcel } from "@/lib/excel-parser";
 import { validateAndTransform } from "@/lib/validator";
-import type { GanttHeat, ValidationError, ExcelRow } from "@/lib/types";
+import type { GanttHeat, ValidationError, ExcelRow, Operation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { SteelGanttVisionIcon } from "@/components/icons";
 import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table";
@@ -19,6 +19,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, startOfDay } from 'date-fns';
 import { vi } from 'date-fns/locale';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { groupBy } from "lodash";
+
 
 interface Stats {
     totalHeats: number;
@@ -26,7 +28,22 @@ interface Stats {
     totalIdleMinutes: number;
     errorCount: number;
     warningCount: number;
+    steelGradeCount: number;
+    avgProcessingTime: number;
 }
+
+interface GradeStats {
+  [key: string]: {
+    count: number;
+    avgTimes: {
+      KR: number;
+      BOF: number;
+      LF: number;
+      CASTER: number;
+    };
+  };
+}
+
 
 export type TimeRange = 8 | 12 | 24 | 48;
 
@@ -58,6 +75,22 @@ export default function Home() {
     setAvailableDates([]);
   }
 
+  const updateStats = (heats: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
+       const totalIdle = heats.reduce((acc, heat) => acc + heat.totalIdleTime, 0);
+       const totalProcessingTime = heats.reduce((acc, heat) => acc + heat.totalDuration, 0);
+       const uniqueGrades = new Set(heats.map(h => h.Steel_Grade));
+
+      setStats({
+          totalHeats: heats.length,
+          totalOperations: heats.reduce((acc, heat) => acc + heat.operations.length, 0),
+          totalIdleMinutes: Math.round(totalIdle),
+          errorCount: errors.length,
+          warningCount: warnings.length,
+          steelGradeCount: uniqueGrades.size,
+          avgProcessingTime: heats.length > 0 ? Math.round(totalProcessingTime / heats.length) : 0,
+      });
+  }
+
   const filterDataByDate = (date: Date | undefined, data: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
       if (!date) {
         setFilteredGanttData(data);
@@ -77,16 +110,36 @@ export default function Home() {
     filterDataByDate(date, allGanttData, validationErrors, warnings);
   }
 
-  const updateStats = (heats: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
-       const totalIdle = heats.reduce((acc, heat) => acc + heat.totalIdleTime, 0);
-      setStats({
-          totalHeats: heats.length,
-          totalOperations: heats.reduce((acc, heat) => acc + heat.operations.length, 0),
-          totalIdleMinutes: Math.round(totalIdle),
-          errorCount: errors.length,
-          warningCount: warnings.length,
-      });
-  }
+  const detailedGradeStats = useMemo<GradeStats>(() => {
+    if (filteredGanttData.length === 0) return {};
+
+    const heatsByGrade = groupBy(filteredGanttData, 'Steel_Grade');
+    const result: GradeStats = {};
+
+    for (const grade in heatsByGrade) {
+        const gradeHeats = heatsByGrade[grade];
+        const gradeOps = gradeHeats.flatMap(h => h.operations);
+        const opsByGroup = groupBy(gradeOps, 'group');
+
+        const calcAvg = (ops: Operation[] | undefined) => {
+            if (!ops || ops.length === 0) return 0;
+            const total = ops.reduce((acc, op) => acc + op.Duration_min, 0);
+            return Math.round(total / ops.length);
+        }
+
+        result[grade] = {
+            count: gradeHeats.length,
+            avgTimes: {
+                KR: calcAvg(opsByGroup['KR']),
+                BOF: calcAvg(opsByGroup['BOF']),
+                LF: calcAvg(opsByGroup['LF']),
+                CASTER: calcAvg(opsByGroup['CASTER']),
+            }
+        };
+    }
+
+    return result;
+  }, [filteredGanttData]);
 
 
   const handleFileProcess = async (file: File) => {
@@ -191,11 +244,13 @@ export default function Home() {
                         <CardTitle className="flex items-center gap-2 font-headline"><BarChart2 className="w-5 h-5" />Báo cáo tổng thể cho ngày {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : ''}</CardTitle>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-4 text-sm">
-                        <p>Tổng số mẻ: <span className="font-bold">{stats.totalHeats}</span></p>
-                        <p>Tổng số công đoạn: <span className="font-bold">{stats.totalOperations}</span></p>
-                        <p>Tổng thời gian chờ (phút): <span className="font-bold">{stats.totalIdleMinutes}</span></p>
-                        <p>Số lỗi: <span className="font-bold text-destructive">{stats.errorCount}</span></p>
-                        <p>Số cảnh báo: <span className="font-bold text-yellow-500">{stats.warningCount}</span></p>
+                        <div>Tổng số mẻ: <span className="font-bold">{stats.totalHeats}</span></div>
+                        <div>Tổng số công đoạn: <span className="font-bold">{stats.totalOperations}</span></div>
+                        <div>Số mác thép: <span className="font-bold">{stats.steelGradeCount}</span></div>
+                        <div>TB xử lý / mẻ (phút): <span className="font-bold">{stats.avgProcessingTime}</span></div>
+                        <div className="col-span-2">Tổng thời gian chờ (phút): <span className="font-bold">{stats.totalIdleMinutes}</span></div>
+                        <div>Số lỗi: <span className="font-bold text-destructive">{stats.errorCount}</span></div>
+                        <div>Số cảnh báo: <span className="font-bold text-yellow-500">{stats.warningCount}</span></div>
                     </CardContent>
                 </Card>
             )}
@@ -326,35 +381,33 @@ export default function Home() {
               </CardContent>
             </Card>
 
-            {filteredGanttData.length > 0 && (
+            {Object.keys(detailedGradeStats).length > 0 && (
                 <Card>
                     <CardHeader>
-                        <CardTitle className="font-headline">Báo cáo chi tiết các mẻ</CardTitle>
-                        <CardDescription>Tổng hợp thời gian xử lý và thời gian chờ cho các mẻ trong ngày đã chọn.</CardDescription>
+                        <CardTitle className="font-headline">Báo cáo chi tiết theo mác thép</CardTitle>
+                        <CardDescription>Thời gian xử lý trung bình (phút) qua từng nhóm công đoạn cho các mác thép trong ngày đã chọn.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Table>
                             <TableHeader>
                                 <TableRow>
-                                    <TableHead>Mẻ (Heat ID)</TableHead>
                                     <TableHead>Mác thép (Grade)</TableHead>
-                                    <TableHead className="text-right">Tổng thời gian xử lý (phút)</TableHead>
-                                    <TableHead className="text-right">Tổng thời gian chờ (phút)</TableHead>
+                                    <TableHead className="text-center">Số mẻ</TableHead>
+                                    <TableHead className="text-right">TB KR</TableHead>
+                                    <TableHead className="text-right">TB BOF</TableHead>
+                                    <TableHead className="text-right">TB LF</TableHead>
+                                    <TableHead className="text-right">TB Đúc (Caster)</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {filteredGanttData.map(heat => (
-                                    <TableRow key={heat.Heat_ID}>
-                                        <TableCell className="font-medium">{heat.Heat_ID}</TableCell>
-                                        <TableCell>{heat.Steel_Grade}</TableCell>
-                                        <TableCell className="text-right flex items-center justify-end gap-2">
-                                            <Timer className="w-4 h-4 text-muted-foreground" />
-                                            {heat.totalDuration}
-                                        </TableCell>
-                                        <TableCell className="text-right flex items-center justify-end gap-2">
-                                            <Hourglass className="w-4 h-4 text-muted-foreground" />
-                                            {heat.totalIdleTime}
-                                        </TableCell>
+                                {Object.entries(detailedGradeStats).map(([grade, stats]) => (
+                                    <TableRow key={grade}>
+                                        <TableCell className="font-medium">{grade}</TableCell>
+                                        <TableCell className="text-center">{stats.count}</TableCell>
+                                        <TableCell className="text-right">{stats.avgTimes.KR > 0 ? stats.avgTimes.KR : '-'}</TableCell>
+                                        <TableCell className="text-right">{stats.avgTimes.BOF > 0 ? stats.avgTimes.BOF : '-'}</TableCell>
+                                        <TableCell className="text-right">{stats.avgTimes.LF > 0 ? stats.avgTimes.LF : '-'}</TableCell>
+                                        <TableCell className="text-right">{stats.avgTimes.CASTER > 0 ? stats.avgTimes.CASTER : '-'}</TableCell>
                                     </TableRow>
                                 ))}
                             </TableBody>
@@ -369,3 +422,6 @@ export default function Home() {
     </div>
   );
 }
+
+
+    
