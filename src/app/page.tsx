@@ -76,12 +76,13 @@ export default function Home() {
   }
 
   const updateStats = (heats: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
+       const uniqueHeats = new Set(heats.map(h => h.Heat_ID));
        const totalIdle = heats.reduce((acc, heat) => acc + heat.totalIdleTime, 0);
        const totalProcessingTime = heats.reduce((acc, heat) => acc + heat.totalDuration, 0);
        const uniqueGrades = new Set(heats.map(h => h.Steel_Grade));
 
       setStats({
-          totalHeats: heats.length,
+          totalHeats: uniqueHeats.size,
           totalOperations: heats.reduce((acc, heat) => acc + heat.operations.length, 0),
           totalIdleMinutes: Math.round(totalIdle),
           errorCount: errors.length,
@@ -423,5 +424,7 @@ export default function Home() {
   );
 }
 
+
+    
 
     
