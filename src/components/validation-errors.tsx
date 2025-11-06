@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, AlertCircle } from "lucide-react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,38 +8,44 @@ import type { ValidationError } from "@/lib/types";
 
 interface ValidationErrorsProps {
   errors: ValidationError[];
+  title: string;
+  description: string;
+  isWarning?: boolean;
 }
 
-export function ValidationErrors({ errors }: ValidationErrorsProps) {
+export function ValidationErrors({ errors, title, description, isWarning = false }: ValidationErrorsProps) {
   if (errors.length === 0) {
     return null;
   }
+  
+  const icon = isWarning ? 
+    <AlertCircle className="w-5 h-5 text-yellow-500" /> : 
+    <AlertTriangle className="w-5 h-5 text-destructive" />;
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="font-headline flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-destructive" />
-          Validation Issues
+            {icon}
+            {title}
         </CardTitle>
         <CardDescription>
-          {errors.length} heat(s) have data inconsistencies.
+          {errors.length} mẻ có vấn đề. {description}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Accordion type="single" collapsible className="w-full">
-          {errors.map(({ heat_id, errors: heatErrors }) => (
-            <AccordionItem value={heat_id} key={heat_id}>
-              <AccordionTrigger>Heat ID: {heat_id}</AccordionTrigger>
+          {errors.map((error, index) => (
+            <AccordionItem value={`${error.heat_id}-${index}`} key={`${error.heat_id}-${index}`}>
+              <AccordionTrigger>
+                  Mẻ: {error.heat_id} - <span className="ml-1 font-semibold">{error.kind}</span>
+              </AccordionTrigger>
               <AccordionContent>
-                <Alert variant="destructive">
-                  <AlertTitle>Errors Found</AlertTitle>
+                <Alert variant={isWarning ? "default" : "destructive"} className={isWarning ? "border-yellow-500/50 text-yellow-600 dark:text-yellow-400" : ""}>
+                   {isWarning ? <AlertCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                  <AlertTitle>{error.kind}</AlertTitle>
                   <AlertDescription>
-                    <ul className="mt-2 ml-4 list-disc space-y-1">
-                      {heatErrors.map((error, index) => (
-                        <li key={index}>{error}</li>
-                      ))}
-                    </ul>
+                   {error.message}
                   </AlertDescription>
                 </Alert>
               </AccordionContent>

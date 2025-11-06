@@ -19,7 +19,7 @@ interface GanttChartProps {
 }
 
 const UNIT_ORDER = [
-  "KR1", "KR2", "BOF1", "BOF2", "BOF3", "BOF4", "BOF5", "LF1", "LF2", "LF3", "LF4", "LF5", "BCM1", "TSC1"
+  "KR1", "KR2", "BOF1", "BOF2", "BOF3", "BOF4", "BOF5", "LF1", "LF2", "LF3", "LF4", "LF5", "BCM1", "TSC1", "TSC2"
 ].reverse(); // Reverse for top-to-bottom display in chart
 
 const COLORS = [
@@ -42,12 +42,13 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     return (
       <Card>
         <CardContent className="p-3 text-sm">
-          <p className="font-bold">Heat ID: {heatData.Heat_ID}</p>
-          <p>Steel Grade: {heatData.Steel_Grade}</p>
-          <p className="font-semibold mt-2">Operation: {heatData.unit}</p>
-          <p>Start: {heatData.startTime.toLocaleTimeString()}</p>
-          <p>End: {heatData.endTime.toLocaleTimeString()}</p>
-          <p>Duration: {heatData.Duration_min} min</p>
+          <p className="font-bold">Mẻ thép: {heatData.Heat_ID}</p>
+          <p>Loại thép: {heatData.Steel_Grade}</p>
+          <p className="font-semibold mt-2">Công đoạn: {heatData.unit}</p>
+          <p>Bắt đầu: {heatData.startTime.toLocaleTimeString()}</p>
+          <p>Kết thúc: {heatData.endTime.toLocaleTimeString()}</p>
+          <p>Thời gian: {heatData.Duration_min} phút</p>
+          {heatData.idleTimeMinutes > 0 && <p className="text-accent-foreground/80">Chờ: {heatData.idleTimeMinutes} phút</p>}
         </CardContent>
       </Card>
     );
@@ -55,7 +56,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function GanttChart({ data }: GanttChartProps) {
+export function GanttChart({ data }: GanttHeatProps) {
   const { chartData, heatToColor, earliestTime, latestTime } = useMemo(() => {
     if (data.length === 0) {
       return { chartData: [], heatToColor: new Map(), earliestTime: 0, latestTime: 0 };
@@ -91,7 +92,7 @@ export function GanttChart({ data }: GanttChartProps) {
   if (data.length === 0) {
     return (
       <div className="flex items-center justify-center h-[600px] text-muted-foreground">
-        <p>No valid data to display.</p>
+        <p>Không có dữ liệu hợp lệ để hiển thị.</p>
       </div>
     );
   }
@@ -126,7 +127,7 @@ export function GanttChart({ data }: GanttChartProps) {
         {data.map(heat => (
           <Bar
             key={heat.Heat_ID}
-            name={`Heat ${heat.Heat_ID}`}
+            name={`Mẻ ${heat.Heat_ID}`}
             dataKey={`${heat.Heat_ID}_duration`}
             stackId="a"
             fill={heatToColor.get(heat.Heat_ID)}
