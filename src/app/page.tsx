@@ -33,16 +33,20 @@ interface Stats {
     avgProcessingTime: number;
 }
 
+interface UnitTimeStats {
+    avg: number;
+    min: number;
+    max: number;
+}
+
 interface GradeStats {
-  [key: string]: {
-    count: number;
-    avgTimes: {
-      KR: number;
-      BOF: number;
-      LF: number;
-      CASTER: number;
+    [key: string]: {
+        count: number;
+        kr: UnitTimeStats;
+        bof: UnitTimeStats;
+        lf: UnitTimeStats;
+        caster: UnitTimeStats;
     };
-  };
 }
 
 
@@ -134,20 +138,25 @@ export default function Home() {
         const gradeOps = gradeHeats.flatMap(h => h.operations);
         const opsByGroup = groupBy(gradeOps, 'group');
 
-        const calcAvg = (ops: Operation[] | undefined) => {
-            if (!ops || ops.length === 0) return 0;
-            const total = ops.reduce((acc, op) => acc + op.Duration_min, 0);
-            return Math.round(total / ops.length);
+        const calcStats = (ops: Operation[] | undefined): UnitTimeStats => {
+            if (!ops || ops.length === 0) return { avg: 0, min: 0, max: 0 };
+            
+            const durations = ops.map(op => op.Duration_min);
+            const total = durations.reduce((acc, time) => acc + time, 0);
+            
+            return {
+                avg: Math.round(total / ops.length),
+                min: Math.min(...durations),
+                max: Math.max(...durations)
+            };
         }
 
         result[grade] = {
             count: gradeHeats.length,
-            avgTimes: {
-                KR: calcAvg(opsByGroup['KR']),
-                BOF: calcAvg(opsByGroup['BOF']),
-                LF: calcAvg(opsByGroup['LF']),
-                CASTER: calcAvg(opsByGroup['CASTER']),
-            }
+            kr: calcStats(opsByGroup['KR']),
+            bof: calcStats(opsByGroup['BOF']),
+            lf: calcStats(opsByGroup['LF']),
+            caster: calcStats(opsByGroup['CASTER']),
         };
     }
 
@@ -467,33 +476,51 @@ export default function Home() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="font-headline">Báo cáo chi tiết theo mác thép</CardTitle>
-                        <CardDescription>Thời gian xử lý trung bình (phút) qua từng nhóm công đoạn cho các mác thép trong khoảng thời gian đã chọn.</CardDescription>
+                        <CardDescription>Thời gian xử lý (phút) qua từng nhóm công đoạn cho các mác thép trong khoảng thời gian đã chọn.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <Table>
-                            <TableHeader>
-                                <TableRow>
-                                    <TableHead>Mác thép (Grade)</TableHead>
-                                    <TableHead className="text-center">Số mẻ</TableHead>
-                                    <TableHead className="text-right">TB KR</TableHead>
-                                    <TableHead className="text-right">TB BOF</TableHead>
-                                    <TableHead className="text-right">TB LF</TableHead>
-                                    <TableHead className="text-right">TB Đúc (Caster)</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {Object.entries(detailedGradeStats).map(([grade, stats]) => (
-                                    <TableRow key={grade}>
-                                        <TableCell className="font-medium">{grade}</TableCell>
-                                        <TableCell className="text-center">{stats.count}</TableCell>
-                                        <TableCell className="text-right">{stats.avgTimes.KR > 0 ? stats.avgTimes.KR : '-'}</TableCell>
-                                        <TableCell className="text-right">{stats.avgTimes.BOF > 0 ? stats.avgTimes.BOF : '-'}</TableCell>
-                                        <TableCell className="text-right">{stats.avgTimes.LF > 0 ? stats.avgTimes.LF : '-'}</TableCell>
-                                        <TableCell className="text-right">{stats.avgTimes.CASTER > 0 ? stats.avgTimes.CASTER : '-'}</TableCell>
+                        <div className="overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow>
+                                        <TableHead rowSpan={2} className="align-bottom">Mác thép (Grade)</TableHead>
+                                        <TableHead rowSpan={2} className="text-center align-bottom">Số mẻ</TableHead>
+                                        <TableHead rowSpan={2} className="text-right align-bottom">TB KR</TableHead>
+                                        <TableHead colSpan={3} className="text-center border-l">BOF</TableHead>
+                                        <TableHead colSpan={3} className="text-center border-l">LF</TableHead>
+                                        <TableHead rowSpan={2} className="text-right align-bottom border-l">TB Đúc</TableHead>
                                     </TableRow>
-                                ))}
-                            </TableBody>
-                        </Table>
+                                    <TableRow>
+                                        <TableHead className="text-right">TB</TableHead>
+                                        <TableHead className="text-right">Min</TableHead>
+                                        <TableHead className="text-right">Max</TableHead>
+                                        <TableHead className="text-right border-l">TB</TableHead>
+                                        <TableHead className="text-right">Min</TableHead>
+                                        <TableHead className="text-right">Max</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {Object.entries(detailedGradeStats).map(([grade, stats]) => (
+                                        <TableRow key={grade}>
+                                            <TableCell className="font-medium">{grade}</TableCell>
+                                            <TableCell className="text-center">{stats.count}</TableCell>
+                                            
+                                            <TableCell className="text-right">{stats.kr.avg > 0 ? stats.kr.avg : '-'}</TableCell>
+                                            
+                                            <TableCell className="text-right border-l">{stats.bof.avg > 0 ? stats.bof.avg : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.bof.min > 0 ? stats.bof.min : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.bof.max > 0 ? stats.bof.max : '-'}</TableCell>
+                                            
+                                            <TableCell className="text-right border-l">{stats.lf.avg > 0 ? stats.lf.avg : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.lf.min > 0 ? stats.lf.min : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.lf.max > 0 ? stats.lf.max : '-'}</TableCell>
+                                            
+                                            <TableCell className="text-right border-l">{stats.caster.avg > 0 ? stats.caster.avg : '-'}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
                     </CardContent>
                 </Card>
             )}
@@ -503,5 +530,6 @@ export default function Home() {
       </main>
     </div>
   );
+}
 
     
