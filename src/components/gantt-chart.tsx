@@ -6,6 +6,7 @@ import * as d3 from 'd3';
 import { GanttHeat, Operation } from '@/lib/types';
 import _ from 'lodash';
 import type { TimeRange } from '@/app/page';
+import { format } from 'date-fns';
 
 interface GanttChartProps {
   data: GanttHeat[];
@@ -66,9 +67,8 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
 
       const fullTimeDomainStart = d3.timeMinute.offset(minTime, -15);
       const fullTimeDomainEnd = d3.timeMinute.offset(maxTime, 15);
-      const visibleTimeDomainEnd = d3.timeHour.offset(fullTimeDomainStart, timeRange);
-
-      const margin = { top: 30, right: 30, bottom: 30, left: 60 };
+      
+      const margin = { top: 30, right: 30, bottom: 50, left: 60 }; // Increased bottom margin for date axis
       const containerWidth = chartOutputEl.clientWidth;
       const height = (UNIT_ORDER.length * 35); // 35px row height
       
@@ -93,9 +93,10 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
       const yScale = d3.scaleBand().domain(UNIT_ORDER).range([0, height]).padding(0.2);
       const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heatIDs);
 
+      // Time Axis
       const xAxis = d3.axisBottom(xScale)
         .tickFormat(d3.timeFormat("%H:%M") as (d: Date | { valueOf(): number; }, i: number) => string)
-        .ticks(d3.timeMinute.every(30));
+        .ticks(d3.timeHour.every(1));
         
       svg.append("g")
         .attr("class", "axis text-xs text-muted-foreground")
@@ -103,6 +104,19 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
         .call(xAxis)
         .selectAll("path, line")
         .attr("stroke", "hsl(var(--border))");
+        
+      // Date Axis (below time axis)
+      const dateAxis = d3.axisBottom(xScale)
+        .ticks(d3.timeDay.every(1))
+        .tickFormat(d3.timeFormat("%d/%m/%Y") as (d: Date | { valueOf(): number; }, i: number) => string);
+
+      svg.append("g")
+        .attr("class", "axis date-axis text-xs text-muted-foreground")
+        .attr("transform", `translate(0, ${height + 20})`) // Position below the time axis
+        .call(dateAxis)
+        .call(g => g.select(".domain").remove()) // Remove axis line
+        .selectAll("line").remove(); // Remove ticks
+
 
       const yAxis = d3.axisLeft(yScale);
       svg.append("g")
@@ -122,8 +136,8 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
             <div class="font-bold">Mẻ: ${d.Heat_ID} (${d.Steel_Grade})</div>
             <div>Thiết bị: ${d.unit} (${d.group})</div>
             <hr class="my-1"/>
-            <div>Bắt đầu: ${d.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-            <div>Kết thúc: ${d.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            <div>Bắt đầu: ${format(d.startTime, 'HH:mm dd/MM')}</div>
+            <div>Kết thúc: ${format(d.endTime, 'HH:mm dd/MM')}</div>
             <div>Thời gian: ${d.Duration_min} phút</div>
         `)
         .style("left", (event.pageX + 15) + "px")
@@ -136,8 +150,8 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
             <div class="font-bold">Mẻ: ${d.Heat_ID} (${d.Steel_Grade})</div>
             <div class="font-bold text-primary">Chuyển tiếp (Chờ)</div>
             <hr class="my-1"/>
-            <div>Từ: ${d.op1.unit} (kết thúc ${d.op1.endTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</div>
-            <div>Đến: ${d.op2.unit} (bắt đầu ${d.op2.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})</div>
+            <div>Từ: ${d.op1.unit} (kết thúc ${format(d.op1.endTime, 'HH:mm')})</div>
+            <div>Đến: ${d.op2.unit} (bắt đầu ${format(d.op2.startTime, 'HH:mm')})</div>
             ${idleMinutes > 0 ? `<div class="text-yellow-600">Thời gian chờ: ${idleMinutes} phút</div>` : ''}
         `)
         .style("left", (event.pageX + 15) + "px")
@@ -248,9 +262,14 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
             transition: opacity 0.2s;
             z-index: 50;
         }
+        .date-axis .tick text {
+            font-weight: 600;
+        }
       `}</style>
       <div ref={chartContainerRef} className="w-full overflow-x-auto" />
       <div ref={tooltipRef} className="d3-tooltip" />
     </>
   );
 }
+
+    
