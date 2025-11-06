@@ -31,14 +31,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     
     // Find the first relevant data point in the payload
     const payloadItem = payload.find(p => {
-        const keyMatch = p.dataKey.match(/(.+)_(duration|start)/);
+        const keyMatch = p.dataKey && String(p.dataKey).match(/(.+)_(duration|start)/);
         return keyMatch && data.tooltips && data.tooltips[keyMatch[1]];
     });
 
     if (!payloadItem) return null;
 
     const key = payloadItem.dataKey;
-    const heatIdMatch = key.match(/(.+)_(duration|start)/);
+    const heatIdMatch = String(key).match(/(.+)_(duration|start)/);
     if (!heatIdMatch) return null;
 
     const heatId = heatIdMatch[1];
@@ -47,7 +47,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     if (!heatData) return null;
 
     // Tooltip for connecting lines (idle time)
-     if (payload.some(p => p.dataKey.includes('_idle_line'))) {
+     if (payload.some(p => String(p.dataKey).includes('_idle_line'))) {
         if (!heatData || !heatData.prevOp) return null;
         const idleTime = Math.round((heatData.startTime.getTime() - heatData.prevOp.endTime.getTime()) / (1000 * 60));
         return (
@@ -273,5 +273,7 @@ export function GanttChart({ data }: GanttChartProps) {
     </ResponsiveContainer>
   );
 }
+
+    
 
     
