@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -56,7 +57,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export function GanttChart({ data }: GanttHeatProps) {
+export function GanttChart({ data }: GanttChartProps) {
   const { chartData, heatToColor, earliestTime, latestTime } = useMemo(() => {
     if (data.length === 0) {
       return { chartData: [], heatToColor: new Map(), earliestTime: 0, latestTime: 0 };
@@ -117,7 +118,7 @@ export function GanttChart({ data }: GanttHeatProps) {
         <Legend />
         {data.map(heat => (
           <Bar
-            key={`${heat.Heat_ID}_start`}
+            key={`${heat.Heat_ID}_start_offset`}
             dataKey={`${heat.Heat_ID}_start`}
             stackId="a"
             fill="transparent"
@@ -126,7 +127,7 @@ export function GanttChart({ data }: GanttHeatProps) {
         ))}
         {data.map(heat => (
           <Bar
-            key={heat.Heat_ID}
+            key={`${heat.Heat_ID}_duration_bar`}
             name={`Mẻ ${heat.Heat_ID}`}
             dataKey={`${heat.Heat_ID}_duration`}
             stackId="a"
