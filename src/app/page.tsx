@@ -16,7 +16,8 @@ import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { format, isSameDay, startOfDay } from 'date-fns';
+import { format, isSameDay, startOfDay, isWithinInterval, addDays } from 'date-fns';
+import { DateRange } from 'react-day-picker';
 import { vi } from 'date-fns/locale';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { groupBy } from "lodash";
@@ -57,17 +58,23 @@ export default function Home() {
   const [cleanJson, setCleanJson] = useState<ExcelRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>(24);
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
+  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: new Date(), to: new Date() });
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [selectedHeatDetails, setSelectedHeatDetails] = useState<GanttHeat | null>(null);
 
   const filteredGanttData = useMemo(() => {
-    if (!selectedDate || ganttData.length === 0) return [];
-    const dayStart = startOfDay(selectedDate);
+    if (!dateRange || !dateRange.from || ganttData.length === 0) return [];
+    
+    const start = startOfDay(dateRange.from);
+    const end = dateRange.to ? startOfDay(dateRange.to) : start;
+
     return ganttData.filter(heat => 
-      heat.operations.some(op => isSameDay(op.startTime, dayStart) || isSameDay(op.endTime, dayStart))
+        heat.operations.some(op => 
+            isWithinInterval(op.startTime, { start, end: addDays(end, 1) }) || 
+            isWithinInterval(op.endTime, { start, end: addDays(end, 1) })
+        )
     );
-  }, [ganttData, selectedDate]);
+  }, [ganttData, dateRange]);
 
 
   const resetState = () => {
@@ -78,7 +85,7 @@ export default function Home() {
     setPreviewData([]);
     setCleanJson([]);
     setStats(null);
-    setSelectedDate(new Date());
+    setDateRange({ from: new Date(), to: new Date() });
     setAvailableDates([]);
     setSelectedHeatDetails(null);
   }
@@ -100,15 +107,15 @@ export default function Home() {
       });
   }
 
-  const handleDateSelect = (date: Date | undefined) => {
-    setSelectedDate(date);
-    updateStats(
-      date ? ganttData.filter(heat => heat.operations.some(op => isSameDay(op.startTime, startOfDay(date)) || isSameDay(op.endTime, startOfDay(date)))) : [],
-      validationErrors,
-      warnings
-    );
+  const handleDateRangeSelect = (range: DateRange | undefined) => {
+    setDateRange(range);
     setSelectedHeatDetails(null); // Deselect heat when date changes
   }
+
+  // Update stats whenever filteredGanttData changes
+  useMemo(() => {
+    updateStats(filteredGanttData, validationErrors, warnings);
+  }, [filteredGanttData, validationErrors, warnings]);
 
 
   const handleHeatSelect = (heat: GanttHeat | null) => {
@@ -169,13 +176,13 @@ export default function Home() {
       const dates = [...new Set(validHeats.flatMap(h => h.operations.map(op => startOfDay(op.startTime).getTime())))].map(t => new Date(t));
       setAvailableDates(dates);
       
-      const initialDate = dates.length > 0 ? dates[0] : new Date();
-      setSelectedDate(initialDate);
-
-      const initialFilteredHeats = validHeats.filter(heat => 
-        heat.operations.some(op => isSameDay(op.startTime, startOfDay(initialDate)) || isSameDay(op.endTime, startOfDay(initialDate)))
-      );
-      updateStats(initialFilteredHeats, allErrors, allWarnings);
+      if (dates.length > 0) {
+        const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+        const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+        setDateRange({ from: minDate, to: maxDate });
+      } else {
+        setDateRange({ from: new Date(), to: new Date() });
+      }
 
     } catch (e: any) {
       console.error(e);
@@ -250,7 +257,14 @@ export default function Home() {
             {stats && (
                  <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 font-headline"><BarChart2 className="w-5 h-5" />Báo cáo tổng thể cho ngày {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : ''}</CardTitle>
+                        <CardTitle className="flex items-center gap-2 font-headline"><BarChart2 className="w-5 h-5" />Báo cáo tổng thể</CardTitle>
+                         <CardDescription>
+                            {dateRange?.from && (
+                                dateRange.to ? 
+                                `Từ ${format(dateRange.from, 'dd/MM')} đến ${format(dateRange.to, 'dd/MM/yyyy')}` 
+                                : format(dateRange.from, 'dd/MM/yyyy')
+                            )}
+                        </CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-4 text-sm">
                         <div>Tổng số mẻ: <span className="font-bold">{stats.totalHeats}</span></div>
@@ -337,20 +351,34 @@ export default function Home() {
                          <Popover>
                             <PopoverTrigger asChild>
                                 <Button
+                                id="date"
                                 variant={"outline"}
-                                className="w-[240px] justify-start text-left font-normal"
+                                className="w-[300px] justify-start text-left font-normal"
                                 disabled={availableDates.length === 0}
                                 >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
-                                {selectedDate ? format(selectedDate, "PPP", { locale: vi }) : <span>Chọn ngày</span>}
+                                {dateRange?.from ? (
+                                    dateRange.to ? (
+                                    <>
+                                        {format(dateRange.from, "LLL dd, y")} -{" "}
+                                        {format(dateRange.to, "LLL dd, y")}
+                                    </>
+                                    ) : (
+                                    format(dateRange.from, "LLL dd, y")
+                                    )
+                                ) : (
+                                    <span>Chọn khoảng ngày</span>
+                                )}
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-auto p-0" align="start">
                                 <Calendar
-                                    mode="single"
-                                    selected={selectedDate}
-                                    onSelect={handleDateSelect}
                                     initialFocus
+                                    mode="range"
+                                    defaultMonth={dateRange?.from}
+                                    selected={dateRange}
+                                    onSelect={handleDateRangeSelect}
+                                    numberOfMonths={2}
                                     modifiers={{ available: availableDates }}
                                     modifiersClassNames={{ available: 'bg-primary/20' }}
                                 />
@@ -383,7 +411,7 @@ export default function Home() {
                     data={filteredGanttData} 
                     timeRange={timeRange} 
                     onHeatSelect={handleHeatSelect}
-                    key={selectedDate?.toISOString()}
+                    key={dateRange?.from?.toISOString()}
                   />
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[600px] text-muted-foreground gap-4">
@@ -439,7 +467,7 @@ export default function Home() {
                 <Card>
                     <CardHeader>
                         <CardTitle className="font-headline">Báo cáo chi tiết theo mác thép</CardTitle>
-                        <CardDescription>Thời gian xử lý trung bình (phút) qua từng nhóm công đoạn cho các mác thép trong ngày đã chọn.</CardDescription>
+                        <CardDescription>Thời gian xử lý trung bình (phút) qua từng nhóm công đoạn cho các mác thép trong khoảng thời gian đã chọn.</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Table>
@@ -475,4 +503,5 @@ export default function Home() {
       </main>
     </div>
   );
-}
+
+    
