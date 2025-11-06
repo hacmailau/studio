@@ -72,20 +72,38 @@ function parseTime(
 function groupByHeatID(data: RawOperation[]): GroupedData {
   const grouped: GroupedData = {};
   data.forEach((row) => {
-    if (!row.Heat_ID) return;
-    const heatID = String(row.Heat_ID);
+    // Normalize keys from row
+    const normalizedRow: { [key: string]: any } = {};
+    for (const key in row) {
+        if (Object.prototype.hasOwnProperty.call(row, key)) {
+            const normalizedKey = key.trim();
+            normalizedRow[normalizedKey] = (row as any)[key];
+        }
+    }
+
+    const heatIDKey = Object.keys(normalizedRow).find(k => k.toLowerCase() === 'heat_id');
+    const steelGradeKey = Object.keys(normalizedRow).find(k => k.toLowerCase() === 'steel_grade');
+    const unitKey = Object.keys(normalizedRow).find(k => k.toLowerCase() === 'unit');
+    const startTimeKey = Object.keys(normalizedRow).find(k => k.toLowerCase() === 'start_time');
+    const endTimeKey = Object.keys(normalizedRow).find(k => k.toLowerCase() === 'end_time');
+    const durationMinKey = Object.keys(normalizedRow).find(k => k.toLowerCase() === 'duration_min');
+
+    if (!heatIDKey || !normalizedRow[heatIDKey]) return;
+    
+    const heatID = String(normalizedRow[heatIDKey]);
     if (!grouped[heatID]) {
       grouped[heatID] = {
         Heat_ID: heatID,
-        Steel_Grade: row.Steel_Grade,
+        Steel_Grade: steelGradeKey ? normalizedRow[steelGradeKey] : undefined,
         operations: [],
       };
     }
+    
     grouped[heatID].operations.push({
-      unit: row.unit,
-      Start_Time: row.Start_Time,
-      End_Time: row.End_Time,
-      Duration_min: row.Duration_min,
+      unit: unitKey ? normalizedRow[unitKey] : undefined,
+      Start_Time: startTimeKey ? normalizedRow[startTimeKey] : undefined,
+      End_Time: endTimeKey ? normalizedRow[endTimeKey] : undefined,
+      Duration_min: durationMinKey ? normalizedRow[durationMinKey] : undefined,
     });
   });
   return grouped;
@@ -202,8 +220,10 @@ export async function parseAndValidateExcel(file: File): Promise<ProcessingResul
         });
 
         const requiredColumns = ["Heat_ID", "Steel_Grade", "unit", "Start_Time", "End_Time"];
-        const header: string[] = XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] as string[];
-        const missingColumns = requiredColumns.filter(col => !header.includes(col));
+        const header: string[] = (XLSX.utils.sheet_to_json(worksheet, { header: 1 })[0] as string[]).map(h => h.trim());
+        const lowerCaseHeader = header.map(h => h.toLowerCase());
+
+        const missingColumns = requiredColumns.filter(col => !lowerCaseHeader.includes(col.toLowerCase()));
 
         if (missingColumns.length > 0) {
             throw new Error(`Missing required columns in Excel file: ${missingColumns.join(', ')}`);
