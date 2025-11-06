@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, Info, Star } from "lucide-react";
+import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, Info, Star, Zap } from "lucide-react";
 import { FileUploader } from "@/components/file-uploader";
 import { GanttChart } from "@/components/gantt-chart";
 import { ValidationErrors } from "@/components/validation-errors";
@@ -23,7 +23,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { groupBy } from "lodash";
 
 
-interface LongestOp {
+interface OpStat {
     heatId: string;
     duration: number;
 }
@@ -31,15 +31,20 @@ interface LongestOp {
 interface Stats {
     totalHeats: number;
     avgIdleMinutes: number;
-    errorCount: number;
-    warningCount: number;
     steelGradeCount: number;
     avgProcessingTime: number;
-    longestOverall: LongestOp | null;
-    longestKR: LongestOp | null;
-    longestBOF: LongestOp | null;
-    longestLF: LongestOp | null;
-    longestCaster: LongestOp | null;
+    
+    longestOverall: OpStat | null;
+    longestKR: OpStat | null;
+    longestBOF: OpStat | null;
+    longestLF: OpStat | null;
+    longestCaster: OpStat | null;
+
+    shortestOverall: OpStat | null;
+    shortestKR: OpStat | null;
+    shortestBOF: OpStat | null;
+    shortestLF: OpStat | null;
+    shortestCaster: OpStat | null;
 }
 
 interface UnitTimeStats {
@@ -109,31 +114,45 @@ export default function Home() {
        const totalProcessingTime = heats.reduce((acc, heat) => acc + heat.totalDuration, 0);
        const uniqueGrades = new Set(heats.map(h => h.Steel_Grade));
 
-       let longestOverall: LongestOp | null = null;
+       let longestOverall: OpStat | null = null;
+       let shortestOverall: OpStat | null = null;
        if (heats.length > 0) {
             const heatWithLongestTime = heats.reduce((prev, current) => (prev.totalDuration > current.totalDuration) ? prev : current);
             longestOverall = { heatId: heatWithLongestTime.Heat_ID, duration: heatWithLongestTime.totalDuration };
+            
+            const heatWithShortestTime = heats.reduce((prev, current) => (prev.totalDuration < current.totalDuration) ? prev : current);
+            shortestOverall = { heatId: heatWithShortestTime.Heat_ID, duration: heatWithShortestTime.totalDuration };
        }
 
-       const findLongestInGroup = (group: string): LongestOp | null => {
+       const findOpStatInGroup = (group: string, type: 'longest' | 'shortest'): OpStat | null => {
             const groupOps = heats.flatMap(h => h.operations.filter(op => op.group === group).map(op => ({ ...op, Heat_ID: h.Heat_ID })));
             if (groupOps.length === 0) return null;
-            const longestOp = groupOps.reduce((prev, current) => (prev.Duration_min > current.Duration_min) ? prev : current);
-            return { heatId: longestOp.Heat_ID, duration: longestOp.Duration_min };
+            
+            const op = groupOps.reduce((prev, current) => {
+                if (type === 'longest') {
+                    return (prev.Duration_min > current.Duration_min) ? prev : current
+                }
+                return (prev.Duration_min < current.Duration_min) ? prev : current
+            });
+
+            return { heatId: op.Heat_ID, duration: op.Duration_min };
        }
 
       setStats({
           totalHeats: uniqueHeats.size,
           avgIdleMinutes: uniqueHeats.size > 0 ? Math.round(totalIdle / uniqueHeats.size) : 0,
-          errorCount: errors.length,
-          warningCount: warnings.length,
           steelGradeCount: uniqueGrades.size,
           avgProcessingTime: uniqueHeats.size > 0 ? Math.round(totalProcessingTime / uniqueHeats.size) : 0,
           longestOverall,
-          longestKR: findLongestInGroup("KR"),
-          longestBOF: findLongestInGroup("BOF"),
-          longestLF: findLongestInGroup("LF"),
-          longestCaster: findLongestInGroup("CASTER"),
+          longestKR: findOpStatInGroup("KR", 'longest'),
+          longestBOF: findOpStatInGroup("BOF", 'longest'),
+          longestLF: findOpStatInGroup("LF", 'longest'),
+          longestCaster: findOpStatInGroup("CASTER", 'longest'),
+          shortestOverall,
+          shortestKR: findOpStatInGroup("KR", 'shortest'),
+          shortestBOF: findOpStatInGroup("BOF", 'shortest'),
+          shortestLF: findOpStatInGroup("LF", 'shortest'),
+          shortestCaster: findOpStatInGroup("CASTER", 'shortest'),
       });
   }
 
@@ -306,8 +325,6 @@ export default function Home() {
                         <div className="col-span-2">Số mác thép: <span className="font-bold">{stats.steelGradeCount}</span></div>
                         <div className="col-span-2">TB xử lý / mẻ (phút): <span className="font-bold">{stats.avgProcessingTime}</span></div>
                         <div className="col-span-2">TB chờ / mẻ (phút): <span className="font-bold">{stats.avgIdleMinutes}</span></div>
-                        <div className="col-span-1">Số lỗi: <span className="font-bold text-destructive">{stats.errorCount}</span></div>
-                        <div className="col-span-1">Số cảnh báo: <span className="font-bold text-yellow-500">{stats.warningCount}</span></div>
                     </CardContent>
                 </Card>
             )}
@@ -324,6 +341,22 @@ export default function Home() {
                         {stats.longestBOF && <div className="flex justify-between"><span>BOF:</span> <span className="font-bold">{stats.longestBOF.heatId} ({stats.longestBOF.duration}p)</span></div>}
                         {stats.longestLF && <div className="flex justify-between"><span>LF:</span> <span className="font-bold">{stats.longestLF.heatId} ({stats.longestLF.duration}p)</span></div>}
                         {stats.longestCaster && <div className="flex justify-between"><span>Đúc:</span> <span className="font-bold">{stats.longestCaster.heatId} ({stats.longestCaster.duration}p)</span></div>}
+                    </CardContent>
+                </Card>
+            )}
+
+            {stats && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2 font-headline"><Zap className="w-5 h-5 text-green-400" />Mẻ nổi bật (Ngắn nhất)</CardTitle>
+                        <CardDescription>Các mẻ có thời gian xử lý ngắn nhất</CardDescription>
+                    </CardHeader>
+                     <CardContent className="text-sm space-y-2">
+                        {stats.shortestOverall && <div className="flex justify-between"><span>Tổng thể:</span> <span className="font-bold">{stats.shortestOverall.heatId} ({stats.shortestOverall.duration}p)</span></div>}
+                        {stats.shortestKR && <div className="flex justify-between"><span>KR:</span> <span className="font-bold">{stats.shortestKR.heatId} ({stats.shortestKR.duration}p)</span></div>}
+                        {stats.shortestBOF && <div className="flex justify-between"><span>BOF:</span> <span className="font-bold">{stats.shortestBOF.heatId} ({stats.shortestBOF.duration}p)</span></div>}
+                        {stats.shortestLF && <div className="flex justify-between"><span>LF:</span> <span className="font-bold">{stats.shortestLF.heatId} ({stats.shortestLF.duration}p)</span></div>}
+                        {stats.shortestCaster && <div className="flex justify-between"><span>Đúc:</span> <span className="font-bold">{stats.shortestCaster.heatId} ({stats.shortestCaster.duration}p)</span></div>}
                     </CardContent>
                 </Card>
             )}
@@ -572,5 +605,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
