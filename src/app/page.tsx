@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass } from "lucide-react";
+import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, ChevronDown } from "lucide-react";
 import { FileUploader } from "@/components/file-uploader";
 import { GanttChart } from "@/components/gantt-chart";
 import { ValidationErrors } from "@/components/validation-errors";
@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { format, isSameDay, startOfDay } from 'date-fns';
 import { vi } from 'date-fns/locale';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 interface Stats {
     totalHeats: number;
@@ -57,27 +58,27 @@ export default function Home() {
     setAvailableDates([]);
   }
 
-  const filterDataByDate = (date: Date | undefined, data: GanttHeat[]) => {
+  const filterDataByDate = (date: Date | undefined, data: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
       if (!date) {
         setFilteredGanttData(data);
+        updateStats(data, errors, warnings);
         return;
       }
       const dayStart = startOfDay(date);
       const filtered = data.filter(heat => 
-          heat.operations.some(op => isSameDay(op.startTime, dayStart))
+          heat.operations.some(op => isSameDay(op.startTime, dayStart) || isSameDay(op.endTime, dayStart))
       );
       setFilteredGanttData(filtered);
-      updateStats(filtered, validationErrors, warnings);
+      updateStats(filtered, errors, warnings);
   };
 
   const handleDateSelect = (date: Date | undefined) => {
     setSelectedDate(date);
-    filterDataByDate(date, allGanttData);
+    filterDataByDate(date, allGanttData, validationErrors, warnings);
   }
 
   const updateStats = (heats: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
        const totalIdle = heats.reduce((acc, heat) => acc + heat.totalIdleTime, 0);
-
       setStats({
           totalHeats: heats.length,
           totalOperations: heats.reduce((acc, heat) => acc + heat.operations.length, 0),
@@ -111,7 +112,7 @@ export default function Home() {
       
       const initialDate = dates.length > 0 ? dates[0] : new Date();
       setSelectedDate(initialDate);
-      filterDataByDate(initialDate, validHeats);
+      filterDataByDate(initialDate, validHeats, allErrors, allWarnings);
 
 
     } catch (e: any) {
@@ -220,7 +221,7 @@ export default function Home() {
             {stats && (
                  <Card>
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2 font-headline"><BarChart2 className="w-5 h-5" />Thống kê cho ngày {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : ''}</CardTitle>
+                        <CardTitle className="flex items-center gap-2 font-headline"><BarChart2 className="w-5 h-5" />Báo cáo tổng thể cho ngày {selectedDate ? format(selectedDate, 'dd/MM/yyyy') : ''}</CardTitle>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-4 text-sm">
                         <p>Tổng số mẻ: <span className="font-bold">{stats.totalHeats}</span></p>
@@ -244,8 +245,23 @@ export default function Home() {
                 </Button>
             </div>
 
-            <ValidationErrors errors={validationErrors} title="Lỗi nghiêm trọng" description="Các lỗi này ngăn cản việc hiển thị mẻ trên biểu đồ." />
-            <ValidationErrors errors={warnings} title="Cảnh báo & Ghi chú" description="Các vấn đề này không chặn việc xử lý nhưng cần được xem xét." isWarning />
+            {validationErrors.length > 0 && (
+                <ValidationErrors errors={validationErrors} title="Lỗi nghiêm trọng" description="Các lỗi này ngăn cản việc hiển thị mẻ trên biểu đồ." />
+            )}
+
+            {warnings.length > 0 && (
+                <Accordion type="single" collapsible className="w-full">
+                    <AccordionItem value="warnings">
+                        <AccordionTrigger className="text-base font-headline flex items-center gap-2 p-4 rounded-lg bg-card border data-[state=closed]:hover:bg-accent/10">
+                            <AlertCircle className="w-5 h-5 text-yellow-500" />
+                            Cảnh báo & Ghi chú ({warnings.length})
+                        </AccordionTrigger>
+                        <AccordionContent className="pt-0 -mt-2">
+                            <ValidationErrors errors={warnings} title="" description="Các vấn đề này không chặn việc xử lý nhưng cần được xem xét." isWarning noCard />
+                        </AccordionContent>
+                    </AccordionItem>
+                </Accordion>
+            )}
           
           </div>
           <div className="xl:col-span-3 flex flex-col gap-6">

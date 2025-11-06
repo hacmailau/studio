@@ -1,3 +1,4 @@
+
 "use client";
 
 import { AlertTriangle, AlertCircle } from "lucide-react";
@@ -11,9 +12,10 @@ interface ValidationErrorsProps {
   title: string;
   description: string;
   isWarning?: boolean;
+  noCard?: boolean; // New prop to control card rendering
 }
 
-export function ValidationErrors({ errors, title, description, isWarning = false }: ValidationErrorsProps) {
+export function ValidationErrors({ errors, title, description, isWarning = false, noCard = false }: ValidationErrorsProps) {
   if (errors.length === 0) {
     return null;
   }
@@ -22,18 +24,20 @@ export function ValidationErrors({ errors, title, description, isWarning = false
     <AlertCircle className="w-5 h-5 text-yellow-500" /> : 
     <AlertTriangle className="w-5 h-5 text-destructive" />;
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-headline flex items-center gap-2">
-            {icon}
-            {title}
-        </CardTitle>
-        <CardDescription>
-          {errors.length} mẻ có vấn đề. {description}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+  const content = (
+    <>
+      {title && (
+          <CardHeader>
+              <CardTitle className="font-headline flex items-center gap-2">
+                  {icon}
+                  {title}
+              </CardTitle>
+              <CardDescription>
+                {errors.length} vấn đề được tìm thấy. {description}
+              </CardDescription>
+          </CardHeader>
+      )}
+      <CardContent className={noCard ? 'p-0' : ''}>
         <Accordion type="single" collapsible className="w-full">
           {errors.map((error, index) => (
             <AccordionItem value={`${error.heat_id}-${index}`} key={`${error.heat_id}-${index}`}>
@@ -53,6 +57,16 @@ export function ValidationErrors({ errors, title, description, isWarning = false
           ))}
         </Accordion>
       </CardContent>
+    </>
+  );
+
+  if (noCard) {
+    return <div className="p-4 border-t">{content}</div>;
+  }
+
+  return (
+    <Card>
+      {content}
     </Card>
   );
 }
