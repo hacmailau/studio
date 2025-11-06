@@ -20,8 +20,36 @@ const UNIT_ORDER = [
 export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const [selectedHeatId, setSelectedHeatId] = useState<string | null>(null);
 
+  // Effect for updating styles only
+  useEffect(() => {
+    if (!svgRef.current) return;
+
+    const svg = d3.select(svgRef.current);
+    const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heats.map(h => h.Heat_ID));
+
+    // Update bars
+    svg.selectAll("rect.bar")
+      .transition().duration(300)
+      .attr("fill", d => selectedHeatId === null || (d as any).Heat_ID === selectedHeatId ? heatColorScale((d as any).Heat_ID) : "#cccccc")
+      .style("opacity", d => selectedHeatId === null || (d as any).Heat_ID === selectedHeatId ? 1 : 0.5);
+
+    // Update labels
+    svg.selectAll("text.bar-label")
+      .transition().duration(300)
+      .style("opacity", d => selectedHeatId === null || (d as any).Heat_ID === selectedHeatId ? 1 : 0.3);
+
+    // Update links
+    svg.selectAll("line.link")
+      .transition().duration(300)
+      .style("opacity", d => selectedHeatId === null || (d as any).Heat_ID === selectedHeatId ? 1 : 0.2);
+
+  }, [selectedHeatId, heats]);
+
+
+  // Effect for drawing the chart
   useEffect(() => {
     if (!chartContainerRef.current || !tooltipRef.current || heats.length === 0) {
       if (chartContainerRef.current) {
@@ -68,32 +96,34 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
       const fullTimeDomainStart = d3.timeMinute.offset(minTime, -15);
       const fullTimeDomainEnd = d3.timeMinute.offset(maxTime, 15);
       
-      const margin = { top: 30, right: 30, bottom: 50, left: 60 }; // Increased bottom margin for date axis
+      const margin = { top: 30, right: 30, bottom: 50, left: 60 };
       const containerWidth = chartOutputEl.clientWidth;
-      const height = (UNIT_ORDER.length * 35); // 35px row height
+      const height = (UNIT_ORDER.length * 35);
       
       const totalTimeMinutes = (fullTimeDomainEnd.getTime() - fullTimeDomainStart.getTime()) / 60000;
       const visibleTimeMinutes = timeRange * 60;
       const width = containerWidth * (totalTimeMinutes / visibleTimeMinutes);
 
 
-      const svg = d3.select(chartOutputEl)
+      const svgElement = d3.select(chartOutputEl)
         .append("svg")
         .attr("width", width + margin.left + margin.right)
         .attr("height", height + margin.top + margin.bottom)
-        .on("click", (event) => { // Click on background to deselect
+        .on("click", (event) => {
             if (event.target === event.currentTarget) {
                 setSelectedHeatId(null);
             }
-        })
-        .append("g")
+        });
+      
+      svgRef.current = svgElement.node();
+
+      const svg = svgElement.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
       const xScale = d3.scaleTime().domain([fullTimeDomainStart, fullTimeDomainEnd]).range([0, width]);
       const yScale = d3.scaleBand().domain(UNIT_ORDER).range([0, height]).padding(0.2);
       const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heatIDs);
 
-      // Time Axis
       const xAxis = d3.axisBottom(xScale)
         .tickFormat(d3.timeFormat("%H:%M") as (d: Date | { valueOf(): number; }, i: number) => string)
         .ticks(d3.timeHour.every(1));
@@ -105,17 +135,16 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
         .selectAll("path, line")
         .attr("stroke", "hsl(var(--border))");
         
-      // Date Axis (below time axis)
       const dateAxis = d3.axisBottom(xScale)
         .ticks(d3.timeDay.every(1))
         .tickFormat(d3.timeFormat("%d/%m/%Y") as (d: Date | { valueOf(): number; }, i: number) => string);
 
       svg.append("g")
         .attr("class", "axis date-axis text-xs text-muted-foreground")
-        .attr("transform", `translate(0, ${height + 20})`) // Position below the time axis
+        .attr("transform", `translate(0, ${height + 20})`)
         .call(dateAxis)
-        .call(g => g.select(".domain").remove()) // Remove axis line
-        .selectAll("line").remove(); // Remove ticks
+        .call(g => g.select(".domain").remove())
+        .selectAll("line").remove();
 
 
       const yAxis = d3.axisLeft(yScale);
@@ -126,7 +155,7 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
         .attr("stroke", "hsl(var(--border))");
 
       const handleBarClick = (event: MouseEvent, d: any) => {
-          event.stopPropagation(); // Prevent background click
+          event.stopPropagation();
           setSelectedHeatId(prevId => prevId === d.Heat_ID ? null : d.Heat_ID);
       }
 
@@ -161,11 +190,11 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
       const mouseleave = () => tooltipEl.style("opacity", 0);
 
       svg.append("g")
-        .attr("class", "links")
-        .selectAll("line")
+        .selectAll("line.link")
         .data(linksData)
         .enter()
         .append("line")
+        .attr("class", "link")
         .attr("x1", d => xScale(d.op1.endTime))
         .attr("y1", d => (yScale(d.op1.unit) ?? 0) + yScale.bandwidth() / 2)
         .attr("x2", d => xScale(d.op2.startTime))
@@ -174,16 +203,16 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
         .attr("stroke-width", 1.5)
         .attr("stroke-dasharray", "3,3")
         .style("opacity", d => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0.2)
-        .style("transition", "opacity 0.3s")
         .on("mouseover", mouseover)
         .on("mousemove", mousemoveLink)
         .on("mouseleave", mouseleave);
 
       svg.append("g")
-        .selectAll("rect")
+        .selectAll("rect.bar")
         .data(allOperations)
         .enter()
         .append("rect")
+        .attr("class", "bar")
         .attr("x", d => xScale(d.startTime))
         .attr("y", d => yScale(d.unit)!)
         .attr("width", d => Math.max(0, xScale(d.endTime) - xScale(d.startTime)))
@@ -193,18 +222,17 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
         .attr("ry", 3)
         .style("opacity", d => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0.5)
         .style("cursor", "pointer")
-        .style("transition", "fill 0.3s, opacity 0.3s")
         .on("click", handleBarClick)
         .on("mouseover", mouseover)
         .on("mousemove", mousemoveBar)
         .on("mouseleave", mouseleave);
 
       svg.append("g")
-        .attr("class", "bar-labels")
-        .selectAll("text")
+        .selectAll("text.bar-label")
         .data(allOperations)
         .enter()
         .append("text")
+        .attr("class", "bar-label")
         .attr("x", d => xScale(d.startTime) + (xScale(d.endTime) - xScale(d.startTime)) / 2)
         .attr("y", d => (yScale(d.unit) ?? 0) + yScale.bandwidth() / 2)
         .attr("text-anchor", "middle")
@@ -234,7 +262,7 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
 
-  }, [heats, timeRange, selectedHeatId]);
+  }, [heats, timeRange]);
 
 
   if (heats.length === 0) {
@@ -271,5 +299,3 @@ export function GanttChart({ data: heats, timeRange }: GanttChartProps) {
     </>
   );
 }
-
-    
