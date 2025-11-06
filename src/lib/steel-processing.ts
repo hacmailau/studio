@@ -78,7 +78,13 @@ function parseTime(
   return parsedDate;
 }
 
-function findKey(obj: any, key: string) {
+/**
+ * Finds a key in an object in a case-insensitive way.
+ * @param obj The object to search in.
+ * @param key The key to find.
+ * @returns The value of the key if found, otherwise undefined.
+ */
+function findKey(obj: any, key: string): any {
     const keyLower = key.toLowerCase();
     for (const k in obj) {
         if (k.toLowerCase().trim() === keyLower) {
@@ -160,8 +166,8 @@ function validateData(groupedData: GroupedData): ProcessingResult {
         
         processedOps.push({
             unit: rawOp.unit,
-            group: getGroup(rawAp.unit),
-            sequence_order: getSequenceOrder(rawAp.unit),
+            group: getGroup(rawOp.unit),
+            sequence_order: getSequenceOrder(rawOp.unit),
             Start_Time: String(rawOp.Start_Time),
             End_Time: String(rawOp.End_Time),
             startTime,
@@ -218,7 +224,7 @@ export async function parseAndValidateExcel(file: File): Promise<ProcessingResul
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
         
-        const jsonFromSheet: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        const jsonFromSheet: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
 
         if (!jsonFromSheet || jsonFromSheet.length < 2) {
             throw new Error("The Excel sheet is empty or has no data.");
