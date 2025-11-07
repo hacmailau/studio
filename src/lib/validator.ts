@@ -1,7 +1,7 @@
 
 import type { ExcelRow, ValidationError, Operation, GanttHeat } from "./types";
 import { groupBy } from "lodash";
-import { startOfDay, parse } from 'date-fns';
+import { startOfDay, parse, format } from 'date-fns';
 
 const UNIT_SEQUENCE: { [key: string]: { group: string; order: number } } = {
   KR1: { group: "KR", order: 1 },
@@ -128,18 +128,6 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
 
         // === Final Validation Rules on Sorted Operations ===
         let hasValidationError = false;
-        
-        // Rule: Subsequent operations must start after or at the same time the previous one ends.
-        for (let i = 1; i < ops.length; i++) {
-            if (ops[i].startTime < ops[i - 1].endTime) {
-                errors.push({ 
-                    heat_id: heatId, 
-                    kind: 'TIME', 
-                    message: `Chồng chéo thời gian: ${ops[i].unit} bắt đầu (${format(ops[i].startTime, 'HH:mm')}) trước khi ${ops[i-1].unit} kết thúc (${format(ops[i-1].endTime, 'HH:mm')}).` 
-                });
-                hasValidationError = true;
-            }
-        }
         
         // Rule: A heat can't be on multiple units of the same group (e.g. BOF1 and BOF2), *except for LF*.
         const groupCounts = ops.reduce((acc, op) => {
