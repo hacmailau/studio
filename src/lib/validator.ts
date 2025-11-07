@@ -43,7 +43,7 @@ function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, p
 
     // Handle overnight logic for sequential operations within a heat
     // If the current op time is significantly earlier than the previous op's end time, it must be the next day.
-    if (prevOpEndTime && currentTime < prevOpEndTime) {
+    if (prevOpEndTime && currentTime < prevOpEndTime && prevOpEndTime.getTime() - currentTime.getTime() > 12 * 60 * 60 * 1000) { // More than 12h difference
         currentTime.setDate(currentTime.getDate() + 1);
     }
     
@@ -93,6 +93,7 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
                  continue;
             }
 
+            // For end time, use startTime as the reference for overnight logic to handle cases where an op crosses midnight
             const endTime = parseTimeWithDate(row.dateStr, row.endStr, globalBaseDate, startTime);
             if (!endTime) {
                  errors.push({ heat_id: heatId, kind: 'FORMAT', unit: row.unit, message: `Thời gian kết thúc không hợp lệ '${row.endStr}'.`, opIndex: row.rawIndex });
@@ -102,6 +103,7 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
             
             const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
             if (duration < 0) {
+                 // The time parsing logic should already handle overnight, so a negative duration here is a real error.
                 errors.push({ heat_id: heatId, kind: 'TIME', unit: row.unit, message: `Thời gian kết thúc phải sau thời gian bắt đầu.`, opIndex: row.rawIndex });
                 heatHasFatalError = true;
                 continue;
@@ -133,7 +135,7 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
                 errors.push({ 
                     heat_id: heatId, 
                     kind: 'TIME', 
-                    message: `Chồng chéo thời gian: ${ops[i].unit} bắt đầu trước khi ${ops[i-1].unit} kết thúc.` 
+                    message: `Chồng chéo thời gian: ${ops[i].unit} bắt đầu (${format(ops[i].startTime, 'HH:mm')}) trước khi ${ops[i-1].unit} kết thúc (${format(ops[i-1].endTime, 'HH:mm')}).` 
                 });
                 hasValidationError = true;
             }
@@ -180,7 +182,10 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
                 const idle = Math.round((ops[i].startTime.getTime() - ops[i - 1].endTime.getTime()) / (1000 * 60));
                 ops[i].idleTimeMinutes = idle > 0 ? idle : 0;
             }
-            ops[0].idleTimeMinutes = 0; // First operation has no preceding idle time
+            if (ops.length > 0) {
+              ops[0].idleTimeMinutes = 0; // First operation has no preceding idle time
+            }
+
 
             const hasCaster = ops.some(op => op.group === 'CASTER');
             const totalDuration = ops.reduce((acc, op) => acc + op.Duration_min, 0);
@@ -199,5 +204,3 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
 
     return { validHeats, errors };
 }
-
-    
