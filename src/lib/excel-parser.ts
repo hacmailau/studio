@@ -217,9 +217,12 @@ export async function parseFromUrl(url: string): Promise<{ rows: ExcelRow[], war
         const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
         if (match && match[1]) {
             const sheetId = match[1];
+            // The /edit part is not needed for export and can be removed.
+            const baseUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
             const gidMatch = url.match(/gid=(\d+)/);
-            const gid = gidMatch ? gidMatch[1] : '0'; // Default to first sheet
-            fetchUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+            
+            // If a gid is present in the original URL, append it. Otherwise, export the first sheet by default.
+            fetchUrl = gidMatch ? `${baseUrl}&gid=${gidMatch[1]}` : baseUrl;
         } else {
             throw new Error("URL Google Sheet không hợp lệ.");
         }
@@ -258,5 +261,3 @@ export async function parseFromUrl(url: string): Promise<{ rows: ExcelRow[], war
         throw new Error("Đã xảy ra lỗi không xác định khi xử lý URL.");
     }
 }
-
-    
