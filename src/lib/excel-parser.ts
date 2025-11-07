@@ -2,27 +2,48 @@
 import * as XLSX from "xlsx";
 import type { ExcelRow, ValidationError } from "./types";
 
-// Standardized keys we expect
+// Standardized keys we expect.
+// The key is the normalized version of the header (lowercase, no spaces/special chars).
+// The value is the property name in our ExcelRow object.
 const MAPPING: Record<string, keyof ExcelRow> = {
+    // Vietnamese variants
+    thoigian: "dateStr",
+    methep: "heatId",
+    macthep: "steelGrade",
+    congdoan: "unit",
+    thoigianbatdau: "startStr",
+    thoigianketthuc: "endStr",
+    seq: "seqNum",
+    
+    // English variants
     date: "dateStr",
     heatid: "heatId",
+    heat_id: "heatId",
     steelgrade: "steelGrade",
+    steel_grade: "steelGrade",
     unit: "unit",
     starttime: "startStr",
+    start_time: "startStr",
     endtime: "endStr",
+    end_time: "endStr",
     sequencenumber: "seqNum",
+    sequence_number: "seqNum",
 };
-const REQUIRED_KEYS = ["heatid", "steelgrade", "unit", "starttime", "endtime"];
 
-/**
- * Normalizes a header string by making it lowercase, trimming whitespace, and removing spaces/underscores.
- * @param header The header string to normalize.
- * @returns The normalized header.
- */
+const REQUIRED_KEYS: (keyof ExcelRow)[] = ["heatId", "steelGrade", "unit", "startStr", "endStr"];
+
+// A more robust normalization function
 const normalizeHeader = (header: string): string => {
     if (!header) return "";
-    return header.toLowerCase().replace(/\s+/g, '').replace(/_/g, '');
+    return header
+        .toLowerCase()
+        .normalize("NFD") // Decompose accented characters
+        .replace(/[\u0300-\u036f]/g, "") // Remove diacritical marks
+        .replace(/đ/g, "d") // Special case for Vietnamese 'đ'
+        .replace(/\s+/g, '') // Remove spaces
+        .replace(/_/g, ''); // Remove underscores
 };
+
 
 function excelSerialDateToDate(serial: number): Date {
     const utc_days = Math.floor(serial - 25569);
@@ -74,21 +95,23 @@ function processRows(rows: any[][]): { rows: ExcelRow[], warnings: ValidationErr
     const rawHeaders = rows[0].map(h => String(h || ''));
     const normalizedHeaders = rawHeaders.map(normalizeHeader);
     
-    const missingKeys = REQUIRED_KEYS.filter(key => !normalizedHeaders.includes(key));
-    if (missingKeys.length > 0) {
-         const originalMissingNames = Object.entries(MAPPING)
-            .filter(([k,v]) => missingKeys.includes(k))
-            .map(([k,v])=> Object.keys(MAPPING).find(key => MAPPING[key] === v) || k); // Find original name
-         throw new Error(`Thiếu các cột bắt buộc: ${originalMissingNames.join(', ')}`);
-    }
-
+    // Map of the column index to the ExcelRow key
     const headerMap: Record<number, keyof ExcelRow> = {};
+    // Set of found keys to check for required ones
+    const foundKeys = new Set<keyof ExcelRow>();
+
     normalizedHeaders.forEach((normHeader, index) => {
-        const mappedKey = Object.keys(MAPPING).find(key => normalizeHeader(key) === normHeader);
-        if (mappedKey && MAPPING[mappedKey]) {
-            headerMap[index] = MAPPING[mappedKey];
+        const mappedKey = MAPPING[normHeader];
+        if (mappedKey) {
+            headerMap[index] = mappedKey;
+            foundKeys.add(mappedKey);
         }
     });
+
+    const missingKeys = REQUIRED_KEYS.filter(key => !foundKeys.has(key));
+    if (missingKeys.length > 0) {
+         throw new Error(`Thiếu các cột bắt buộc: ${missingKeys.join(', ')}. Vui lòng kiểm tra lại tiêu đề cột.`);
+    }
 
     const dataRows = rows.slice(1);
     const parsedRows: ExcelRow[] = [];
@@ -109,7 +132,7 @@ function processRows(rows: any[][]): { rows: ExcelRow[], warnings: ValidationErr
         const finalRow = excelRow as ExcelRow;
         
         // Filter out placeholder rows
-        if (finalRow.unit === '0' || (finalRow.startStr === '0:00' && finalRow.endStr === '0:00')) {
+        if (finalRow.unit === '0' || (finalRow.startStr === '00:00' && finalRow.endStr === '00:00')) {
             warnings.push({
                 heat_id: finalRow.heatId || `Hàng ${finalRow.rawIndex}`,
                 kind: 'PLACEHOLDER',
