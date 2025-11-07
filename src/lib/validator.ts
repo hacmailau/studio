@@ -23,22 +23,21 @@ const UNIT_SEQUENCE: { [key: string]: { group: string; order: number } } = {
   TSC2: { group: "CASTER", order: 4 },
 };
 
-function parseTimeWithDate(dateStr: string, hhmm: string, baseDate: Date, prevTime?: Date): Date | null {
+function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, prevOpEndTime?: Date): Date | null {
     if (!hhmm) return null;
 
     const [hours, minutes] = hhmm.split(':').map(Number);
     if (isNaN(hours) || isNaN(minutes)) return null;
-
-    // Use the row's specific date string if available, otherwise fall back to the baseDate from the first row.
-    let targetDate = dateStr ? new Date(dateStr) : baseDate;
-    // If date is invalid, it's a critical error for parsing.
+    
+    // Priority: 1. Use the specific date from the row. 2. Use the reference date (from previous op or base date).
+    let targetDate = dateStr ? startOfDay(new Date(dateStr)) : startOfDay(referenceDate);
     if (isNaN(targetDate.getTime())) return null; 
 
     let currentTime = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), hours, minutes);
 
-    // Handle overnight logic: if the current time is significantly earlier than the previous time
-    // (e.g., 23:00 then 01:00), assume it's the next day.
-    if (prevTime && currentTime < prevTime) {
+    // Handle overnight logic for sequential operations within a heat
+    // If the current op time is significantly earlier than the previous op's end time, it must be the next day.
+    if (prevOpEndTime && currentTime < prevOpEndTime) {
         currentTime.setDate(currentTime.getDate() + 1);
     }
     
@@ -48,7 +47,6 @@ function parseTimeWithDate(dateStr: string, hhmm: string, baseDate: Date, prevTi
 export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[], errors: ValidationError[] } {
     const errors: ValidationError[] = [];
     const validHeats: GanttHeat[] = [];
-    const baseDate = rows.length > 0 && rows[0].dateStr ? startOfDay(new Date(rows[0].dateStr)) : startOfDay(new Date());
     
     const heats = groupBy(rows, 'heatId');
 
@@ -79,14 +77,17 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
                 continue; // It's a warning, but we can't process it.
             }
             
-            const startTime = parseTimeWithDate(row.dateStr, row.startStr, baseDate, lastOpEndTime);
+            // The reference date is the end of the last operation, or the date from the current row, or a new Date.
+            const referenceDate = lastOpEndTime || (row.dateStr ? new Date(row.dateStr) : new Date());
+
+            const startTime = parseTimeWithDate(row.dateStr, row.startStr, referenceDate, lastOpEndTime);
             if (!startTime) {
                  errors.push({ heat_id: heatId, kind: 'FORMAT', unit: row.unit, message: `Thời gian bắt đầu không hợp lệ '${row.startStr}'.`, opIndex: row.rawIndex });
                  heatHasFatalError = true;
                  continue;
             }
 
-            const endTime = parseTimeWithDate(row.dateStr, row.endStr, baseDate, startTime);
+            const endTime = parseTimeWithDate(row.dateStr, row.endStr, referenceDate, startTime);
             if (!endTime) {
                  errors.push({ heat_id: heatId, kind: 'FORMAT', unit: row.unit, message: `Thời gian kết thúc không hợp lệ '${row.endStr}'.`, opIndex: row.rawIndex });
                  heatHasFatalError = true;
