@@ -1,12 +1,13 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, Info, Star, Zap } from "lucide-react";
 import { FileUploader } from "@/components/file-uploader";
+import { UrlUploader } from "@/components/url-uploader";
 import { GanttChart } from "@/components/gantt-chart";
 import { ValidationErrors } from "@/components/validation-errors";
-import { parseExcel } from "@/lib/excel-parser";
+import { parseExcel, parseFromUrl } from "@/lib/excel-parser";
 import { validateAndTransform } from "@/lib/validator";
 import type { GanttHeat, ValidationError, ExcelRow, Operation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -76,7 +77,7 @@ export default function Home() {
   const [cleanJson, setCleanJson] = useState<ExcelRow[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>(24);
-  const [dateRange, setDateRange] = useState<DateRange | undefined>({ from: new Date(), to: new Date() });
+  const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [selectedHeatId, setSelectedHeatId] = useState<string | null>(null);
 
@@ -87,7 +88,7 @@ export default function Home() {
 
 
   const filteredGanttData = useMemo(() => {
-    if (!dateRange || !dateRange.from || ganttData.length === 0) return [];
+    if (!dateRange || !dateRange.from || ganttData.length === 0) return ganttData;
     
     const start = startOfDay(dateRange.from);
     const end = dateRange.to ? startOfDay(dateRange.to) : start;
@@ -109,12 +110,39 @@ export default function Home() {
     setPreviewData([]);
     setCleanJson([]);
     setStats(null);
-    setDateRange({ from: new Date(), to: new Date() });
+    setDateRange(undefined);
     setAvailableDates([]);
     setSelectedHeatId(null);
   }
 
-  const updateStats = (heats: GanttHeat[], errors: ValidationError[], warnings: ValidationError[]) => {
+  const processData = useCallback((parsedRows: ExcelRow[], parseWarnings: ValidationError[]) => {
+      setPreviewData(parsedRows.slice(0, 20));
+      setCleanJson(parsedRows);
+
+      const { validHeats, errors: validationErrs } = validateAndTransform(parsedRows);
+      
+      const allWarnings = [...parseWarnings, ...validationErrs.filter(e => e.kind === 'PLACEHOLDER' || e.kind === 'UNIT')];
+      const allErrors = validationErrs.filter(e => e.kind !== 'PLACEHOLDER' && e.kind !== 'UNIT');
+      
+      setGanttData(validHeats);
+      setValidationErrors(allErrors);
+      setWarnings(allWarnings);
+
+      if (validHeats.length > 0) {
+        const dates = [...new Set(validHeats.flatMap(h => h.operations.map(op => startOfDay(op.startTime).getTime())))].map(t => new Date(t));
+        setAvailableDates(dates);
+        
+        if (dates.length > 0) {
+          const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
+          const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
+          setDateRange({ from: minDate, to: maxDate });
+        }
+      } else {
+         setDateRange(undefined);
+      }
+  }, []);
+
+  const updateStats = (heats: GanttHeat[]) => {
        const uniqueHeats = new Set(heats.map(h => h.Heat_ID));
        const totalIdle = heats.reduce((acc, heat) => acc + heat.totalIdleTime, 0);
        const totalProcessingTime = heats.reduce((acc, heat) => acc + heat.totalDuration, 0);
@@ -169,8 +197,8 @@ export default function Home() {
 
   // Update stats whenever filteredGanttData changes
   useMemo(() => {
-    updateStats(filteredGanttData, validationErrors, warnings);
-  }, [filteredGanttData, validationErrors, warnings]);
+    updateStats(filteredGanttData);
+  }, [filteredGanttData]);
 
 
   const handleHeatSelect = (heatId: string | null) => {
@@ -182,7 +210,18 @@ export default function Home() {
       const heat = filteredGanttData.find(h => h.Heat_ID === heatId);
       if (heat) {
         setSelectedHeatId(heat.Heat_ID);
-        // Optional: Scroll to the Gantt chart
+        const heatDate = startOfDay(heat.operations[0].startTime);
+        
+        // Find if this date exists in the current range
+        if (dateRange?.from && dateRange?.to) {
+           if (!isWithinInterval(heatDate, {start: dateRange.from, end: dateRange.to})) {
+              // If not, set the range to the month of the heat
+              setDateRange({ from: heatDate, to: heatDate });
+           }
+        } else {
+             setDateRange({ from: heatDate, to: heatDate });
+        }
+
         const ganttElement = document.getElementById('gantt-chart-card');
         ganttElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
@@ -233,32 +272,25 @@ export default function Home() {
 
     try {
       const { rows: parsedRows, warnings: parseWarnings } = await parseExcel(file);
-      setPreviewData(parsedRows.slice(0, 20));
-      setCleanJson(parsedRows);
-
-      const { validHeats, errors: validationErrs } = validateAndTransform(parsedRows);
-      
-      const allWarnings = [...parseWarnings, ...validationErrs.filter(e => e.kind === 'PLACEHOLDER' || e.kind === 'UNIT')];
-      const allErrors = validationErrs.filter(e => e.kind !== 'PLACEHOLDER' && e.kind !== 'UNIT');
-      
-      setGanttData(validHeats);
-      setValidationErrors(allErrors);
-      setWarnings(allWarnings);
-
-      const dates = [...new Set(validHeats.flatMap(h => h.operations.map(op => startOfDay(op.startTime).getTime())))].map(t => new Date(t));
-      setAvailableDates(dates);
-      
-      if (dates.length > 0) {
-        const minDate = new Date(Math.min(...dates.map(d => d.getTime())));
-        const maxDate = new Date(Math.max(...dates.map(d => d.getTime())));
-        setDateRange({ from: minDate, to: maxDate });
-      } else {
-        setDateRange({ from: new Date(), to: new Date() });
-      }
-
+      processData(parsedRows, parseWarnings);
     } catch (e: any) {
       console.error(e);
       setError(`Đã xảy ra lỗi: ${e.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleUrlProcess = async (url: string) => {
+    setIsLoading(true);
+    resetState();
+
+    try {
+      const { rows: parsedRows, warnings: parseWarnings } = await parseFromUrl(url);
+      processData(parsedRows, parseWarnings);
+    } catch (e: any) {
+      console.error(e);
+      setError(`Đã xảy ra lỗi khi tải từ URL: ${e.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -306,6 +338,8 @@ export default function Home() {
         <div className="grid gap-6 xl:grid-cols-4">
           <div className="flex flex-col gap-6 xl:col-span-1">
             <FileUploader onFileProcess={handleFileProcess} isLoading={isLoading} />
+            <UrlUploader onUrlProcess={handleUrlProcess} isLoading={isLoading} />
+
             <a href="/sample-data.xlsx" download="sample-data.xlsx">
               <Button variant="outline" className="w-full">
                 <FileDown className="mr-2 h-4 w-4" /> Tải về tệp mẫu
@@ -331,11 +365,11 @@ export default function Home() {
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 font-headline"><BarChart2 className="w-5 h-5" />Báo cáo tổng thể</CardTitle>
                          <CardDescription>
-                            {dateRange?.from && (
-                                dateRange.to ? 
+                            {dateRange?.from ? (
+                                dateRange.to && !isSameDay(dateRange.from, dateRange.to) ? 
                                 `Từ ${format(dateRange.from, 'dd/MM')} đến ${format(dateRange.to, 'dd/MM/yyyy')}` 
                                 : format(dateRange.from, 'dd/MM/yyyy')
-                            )}
+                            ) : 'Tất cả dữ liệu'}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 gap-4 text-sm">
@@ -459,7 +493,7 @@ export default function Home() {
                                 >
                                 <CalendarIcon className="mr-2 h-4 w-4" />
                                 {dateRange?.from ? (
-                                    dateRange.to ? (
+                                    dateRange.to && !isSameDay(dateRange.from, dateRange.to) ? (
                                     <>
                                         {format(dateRange.from, "LLL dd, y")} -{" "}
                                         {format(dateRange.to, "LLL dd, y")}
@@ -480,8 +514,9 @@ export default function Home() {
                                     selected={dateRange}
                                     onSelect={handleDateRangeSelect}
                                     numberOfMonths={2}
+                                    disabled={(date) => !availableDates.some(ad => isSameDay(ad, date))}
                                     modifiers={{ available: availableDates }}
-                                    modifiersClassNames={{ available: 'bg-primary/20' }}
+                                    modifiersClassNames={{ available: 'bg-primary/20 rounded-md' }}
                                 />
                             </PopoverContent>
                         </Popover>
@@ -507,7 +542,7 @@ export default function Home() {
                   <div className="flex items-center justify-center h-[600px]">
                     <Loader2 className="w-12 h-12 animate-spin text-primary" />
                   </div>
-                ) : filteredGanttData.length > 0 ? (
+                ) : ganttData.length > 0 ? (
                   <GanttChart 
                     data={filteredGanttData} 
                     timeRange={timeRange} 
@@ -518,7 +553,7 @@ export default function Home() {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[600px] text-muted-foreground gap-4">
                     <FileJson className="w-16 h-16" />
-                    <p className="text-center">Tải lên tệp Excel hoặc CSV để tạo biểu đồ Gantt.</p>
+                    <p className="text-center">Tải lên tệp Excel hoặc nhập URL để tạo biểu đồ Gantt.</p>
                      <p className="text-xs text-center max-w-sm">Hỗ trợ các cột: Date, Heat_ID, Steel_Grade, Unit, Start_Time, End_Time, sequence_number (tùy chọn).</p>
                   </div>
                 )}

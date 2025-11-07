@@ -69,13 +69,20 @@ function formatValue(value: any): string {
         return "";
     }
     // Handle Excel time values (numbers between 0 and 1)
-    if (typeof value === 'number' && value >= 0 && value < 1) {
+    if (typeof value === 'number' && value > 0 && value < 1) { // Changed >= to > to exclude 0
         const date = excelSerialDateToDate(value);
-        const hours = date.getHours().toString().padStart(2, '0');
-        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const hours = date.getUTCHours().toString().padStart(2, '0');
+        const minutes = date.getUTCMinutes().toString().padStart(2, '0');
         return `${hours}:${minutes}`;
     }
-    // Handle dates
+    // Handle Excel dates (serial numbers)
+    if (typeof value === 'number' && value > 1) {
+        const date = XLSX.SSF.parse_date_code(value);
+        // return new Date(date.y, date.m - 1, date.d, date.H, date.M, date.S).toLocaleDateString('en-CA');
+        return `${date.y}-${String(date.m).padStart(2,'0')}-${String(date.d).padStart(2,'0')}`;
+
+    }
+    // Handle dates already parsed by XLSX
     if (value instanceof Date) {
         return value.toLocaleDateString('en-CA'); // YYYY-MM-DD
     }
@@ -147,7 +154,7 @@ function processRows(rows: any[][]): { rows: ExcelRow[], warnings: ValidationErr
              warnings.push({
                 heat_id: finalRow.heatId || `Hàng ${finalRow.rawIndex}`,
                 kind: 'FORMAT',
-                message: `Định dạng thời gian không hợp lệ ở hàng ${finalRow.rawIndex}. Dự kiến H:MM hoặc HH:MM.`,
+                message: `Định dạng thời gian không hợp lệ ở hàng ${finalRow.rawIndex}. Dự kiến H:MM hoặc HH:MM. Giá trị: '${finalRow.startStr}' / '${finalRow.endStr}'`,
             });
             return;
         }
@@ -178,21 +185,13 @@ export async function parseExcel(file: File): Promise<{ rows: ExcelRow[], warnin
                 if (!event.target?.result) {
                     throw new Error("Không thể đọc được tệp.");
                 }
-                const buffer = event.target.result;
-                let json: any[][];
-
-                if (file.name.endsWith('.csv')) {
-                    const text = new TextDecoder("utf-8").decode(buffer as ArrayBuffer);
-                    // Simple CSV parser
-                    json = text.split('\n').map(row => row.split(',').map(cell => cell.trim()));
-                } else {
-                    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-                    const sheetName = workbook.SheetNames[0];
-                    const worksheet = workbook.Sheets[sheetName];
-                    json = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: "" });
-                }
+                const data = event.target.result;
+                const workbook = XLSX.read(data, { type: "array", cellDates: true, cellNF: false, cellText: false });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: null });
                 
-                resolve(processRows(json));
+                resolve(processRows(json as any[][]));
 
             } catch (error) {
                 reject(error);
@@ -200,10 +199,64 @@ export async function parseExcel(file: File): Promise<{ rows: ExcelRow[], warnin
         };
         reader.onerror = (error) => reject(error);
 
-        if (file.name.endsWith('.csv')) {
-            reader.readAsArrayBuffer(file);
-        } else {
-            reader.readAsArrayBuffer(file);
-        }
+        reader.readAsArrayBuffer(file);
     });
 }
+
+
+/**
+ * Fetches data from a URL (Excel or Google Sheet) and parses it.
+ * @param url The URL of the data source.
+ * @returns A promise that resolves with the parsed data and any initial parsing warnings.
+ */
+export async function parseFromUrl(url: string): Promise<{ rows: ExcelRow[], warnings: ValidationError[] }> {
+    let fetchUrl = url;
+
+    // Convert Google Sheet URL to CSV export URL
+    if (url.includes("docs.google.com/spreadsheets/")) {
+        const match = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+        if (match && match[1]) {
+            const sheetId = match[1];
+            const gidMatch = url.match(/gid=(\d+)/);
+            const gid = gidMatch ? gidMatch[1] : '0'; // Default to first sheet
+            fetchUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+        } else {
+            throw new Error("URL Google Sheet không hợp lệ.");
+        }
+    }
+
+    try {
+        // Using a CORS proxy to fetch cross-origin resources
+        const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+        const response = await fetch(proxyUrl + fetchUrl);
+
+        if (!response.ok) {
+            throw new Error(`Lỗi tải dữ liệu: ${response.statusText}`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        let json: any[][];
+
+        if (fetchUrl.endsWith('.csv')) {
+            const text = new TextDecoder("utf-8").decode(buffer);
+            // Simple CSV parser
+            json = text.split(/[\r\n]+/).map(row => row.split(',').map(cell => cell.trim().replace(/^"|"$/g, '')));
+        } else {
+            const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+            const sheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[sheetName];
+            json = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: null });
+        }
+        
+        return processRows(json);
+
+    } catch (error) {
+        console.error("Error fetching or parsing from URL:", error);
+        if (error instanceof Error) {
+            throw new Error(`Không thể xử lý URL: ${error.message}. Nếu là lỗi CORS, hãy thử cài đặt một tiện ích mở rộng cho trình duyệt.`);
+        }
+        throw new Error("Đã xảy ra lỗi không xác định khi xử lý URL.");
+    }
+}
+
+    

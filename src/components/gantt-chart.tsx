@@ -29,7 +29,8 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
     if (!svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
-    const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heats.map(h => h.Heat_ID));
+    const heatIDs = heats.map(h => h.Heat_ID);
+    const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heatIDs);
 
     // Update bars
     svg.selectAll("rect.bar")
@@ -52,7 +53,9 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
 
   // Effect for drawing the chart
   useEffect(() => {
-    if (!chartContainerRef.current || !tooltipRef.current || heats.length === 0) {
+    if (!chartContainerRef.current || !tooltipRef.current) return;
+    
+    if (heats.length === 0) {
       if (chartContainerRef.current) {
          d3.select(chartContainerRef.current).select("svg").remove();
       }
