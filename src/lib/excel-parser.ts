@@ -237,10 +237,10 @@ export async function parseFromUrl(url: string): Promise<{ rows: ExcelRow[], war
         const buffer = await response.arrayBuffer();
         let json: any[][];
 
-        if (fetchUrl.endsWith('.csv')) {
+        if (fetchUrl.endsWith('.csv') || response.headers.get('Content-Type')?.includes('text/csv')) {
             const text = new TextDecoder("utf-8").decode(buffer);
             // Simple CSV parser
-            json = text.split(/[\r\n]+/).map(row => row.split(',').map(cell => cell.trim().replace(/^"|"$/g, '')));
+            json = text.split(/[\r\n]+/).filter(row => row).map(row => row.split(',').map(cell => cell.trim().replace(/^"|"$/g, '')));
         } else {
             const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
             const sheetName = workbook.SheetNames[0];
@@ -253,7 +253,7 @@ export async function parseFromUrl(url: string): Promise<{ rows: ExcelRow[], war
     } catch (error) {
         console.error("Error fetching or parsing from URL:", error);
         if (error instanceof Error) {
-            throw new Error(`Không thể xử lý URL: ${error.message}. Nếu là lỗi CORS, hãy thử cài đặt một tiện ích mở rộng cho trình duyệt.`);
+            throw new Error(`Không thể xử lý URL: ${error.message}. Nếu là lỗi CORS, hãy thử cài đặt một tiện ích mở rộng cho trình duyệt để bỏ qua CORS.`);
         }
         throw new Error("Đã xảy ra lỗi không xác định khi xử lý URL.");
     }
