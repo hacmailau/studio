@@ -16,37 +16,58 @@ interface GanttChartProps {
 }
 
 const UNIT_ORDER = [
-  "KR1", "KR2", "BOF1", "BOF2", "BOF3", "BOF4", "BOF5", "LF1", "LF2", "LF3", "LF4", "LF5", "BCM1", "BCM2", "BCM3", "TSC1", "TSC2"
+  "KR1", "KR2", 
+  "BOF1", "BOF2", "BOF3", "BOF4", "BOF5", 
+  "LF1", "LF2", "LF3", "LF4", "LF5", 
+  "BCM1", "BCM2", "BCM3", "TSC1", "TSC2"
 ];
+
+const CASTER_HUES: { [key: string]: number } = {
+    TSC1: 207, // Blue (#2196F3)
+    TSC2: 291, // Purple (#8E24AA)
+    BCM1: 124, // Green (#43A047)
+    BCM2: 36,  // Orange (#FB8C00)
+    BCM3: 2,   // Red (#E53935)
+};
+
+// Function to get color based on sequence and caster
+function getColor(sequence: number | undefined, caster: string | undefined): { bg: string; text: string } {
+    if (caster === undefined || sequence === undefined) {
+        return { bg: '#cccccc', text: '#0A0A0A' }; // Default gray
+    }
+    const hue = CASTER_HUES[caster] ?? 240;
+    const maxSequence = 50;
+    const intensity = Math.min(sequence, maxSequence) / maxSequence;
+
+    const saturation = 0.45 + 0.55 * intensity;
+    const lightness = 0.92 - 0.50 * intensity;
+
+    const bgColor = d3.hsl(hue, saturation, lightness).toString();
+    const textColor = getContrastingTextColor(lightness);
+
+    return { bg: bgColor, text: textColor };
+}
+
+// Function to determine text color based on background lightness
+function getContrastingTextColor(lightness: number): string {
+    return lightness > 0.55 ? '#0A0A0A' : '#FFFFFF';
+}
 
 export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatId }: GanttChartProps) {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
-  // Effect for updating styles only
+  // Effect for updating styles on selection change
   useEffect(() => {
     if (!svgRef.current) return;
 
     const svg = d3.select(svgRef.current);
-    const heatIDs = heats.map(h => h.Heat_ID);
-    const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heatIDs);
-
-    // Update bars
-    svg.selectAll("rect.bar")
-      .transition().duration(300)
-      .attr("fill", (d: any) => selectedHeatId === null || d.Heat_ID === selectedHeatId ? heatColorScale(d.Heat_ID) : "#cccccc")
-      .style("opacity", (d: any) => selectedHeatId === null || d.Heat_ID === selectedHeatId ? 1 : 0.5);
-
-    // Update labels
-    svg.selectAll("text.bar-label")
-      .transition().duration(300)
-      .style("opacity", (d: any) => selectedHeatId === null || (d as any).Heat_ID === selectedHeatId ? 1 : 0.3);
-
-    // Update links
-    svg.selectAll("line.link")
-      .transition().duration(300)
-      .style("opacity", (d: any) => selectedHeatId === null || (d as any).Heat_ID === selectedHeatId ? 1 : 0.2);
+    
+    // Fade non-selected elements
+    svg.selectAll("rect.bar, text.bar-label, line.link")
+       .transition().duration(300)
+       .style("opacity", (d: any) => selectedHeatId === null || d.Heat_ID === selectedHeatId ? 1 : 0.45);
 
   }, [selectedHeatId, heats]);
 
@@ -68,46 +89,48 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       
       d3.select(chartOutputEl).select("svg").remove();
 
-      let allOperations: (Operation & { Heat_ID: string; Steel_Grade: string; })[] = [];
-      let minTime = new Date(8640000000000000);
-      let maxTime = new Date(-8640000000000000);
+      const allOpsWithHeatInfo = heats.flatMap(heat => 
+        heat.operations.map(op => ({
+            ...op,
+            Heat_ID: heat.Heat_ID,
+            Steel_Grade: heat.Steel_Grade,
+            castingMachine: heat.castingMachine,
+            sequenceInCaster: heat.sequenceInCaster,
+        }))
+      );
       
-      const heatIDs = heats.map(h => h.Heat_ID);
-      let linksData: { Heat_ID: string; Steel_Grade: string; op1: Operation; op2: Operation }[] = [];
+      if(allOpsWithHeatInfo.length === 0) return;
 
-      heats.forEach(heat => {
+      const { minTime, maxTime } = allOpsWithHeatInfo.reduce((acc, op) => ({
+          minTime: d3.min([acc.minTime, op.startTime])!,
+          maxTime: d3.max([acc.maxTime, op.endTime])!,
+      }), { minTime: allOpsWithHeatInfo[0].startTime, maxTime: allOpsWithHeatInfo[0].endTime });
+
+      const linksData = heats.flatMap(heat => {
         const sortedOps = _.sortBy(heat.operations, 'startTime');
-        
+        const links = [];
         for (let i = 0; i < sortedOps.length - 1; i++) {
-          linksData.push({ Heat_ID: heat.Heat_ID, Steel_Grade: heat.Steel_Grade, op1: sortedOps[i], op2: sortedOps[i+1] });
+            links.push({ 
+                Heat_ID: heat.Heat_ID, 
+                op1: sortedOps[i], 
+                op2: sortedOps[i+1] 
+            });
         }
-
-        sortedOps.forEach(op => {
-          if (op.startTime < minTime) minTime = op.startTime;
-          if (op.endTime > maxTime) maxTime = op.endTime;
-          allOperations.push({ ...op, Heat_ID: heat.Heat_ID, Steel_Grade: heat.Steel_Grade });
-        });
+        return links;
       });
-
-      const originalOpCount = allOperations.length;
-      allOperations = allOperations.filter(op => UNIT_ORDER.includes(op.unit));
-      
-      if (allOperations.length < originalOpCount) {
-        console.warn(`Filtered ${originalOpCount - allOperations.length} operations due to unit mismatch.`);
-      }
-      if(allOperations.length === 0) return;
 
       const fullTimeDomainStart = d3.timeMinute.offset(minTime, -15);
       const fullTimeDomainEnd = d3.timeMinute.offset(maxTime, 15);
       
-      const margin = { top: 30, right: 30, bottom: 50, left: 60 };
+      const margin = { top: 30, right: 40, bottom: 50, left: 60 };
       const containerWidth = chartOutputEl.clientWidth;
-      const height = (UNIT_ORDER.length * 35);
+      const barHeight = 28;
+      const barPadding = 8;
+      const height = UNIT_ORDER.length * (barHeight + barPadding);
       
       const totalTimeMinutes = (fullTimeDomainEnd.getTime() - fullTimeDomainStart.getTime()) / 60000;
       const visibleTimeMinutes = timeRange * 60;
-      const width = containerWidth * (totalTimeMinutes / visibleTimeMinutes);
-
+      const width = Math.max(containerWidth, containerWidth * (totalTimeMinutes / visibleTimeMinutes));
 
       const svgElement = d3.select(chartOutputEl)
         .append("svg")
@@ -125,8 +148,17 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
       const xScale = d3.scaleTime().domain([fullTimeDomainStart, fullTimeDomainEnd]).range([0, width]);
-      const yScale = d3.scaleBand().domain(UNIT_ORDER).range([0, height]).padding(0.2);
-      const heatColorScale = d3.scaleOrdinal(d3.schemeTableau10).domain(heatIDs);
+      const yScale = d3.scaleBand().domain(UNIT_ORDER).range([0, height]).paddingInner(barPadding / (barHeight + barPadding)).paddingOuter(0.2);
+
+      // Add subtle grid lines
+      const grid = svg.append("g")
+        .attr("class", "grid")
+        .attr("transform", `translate(0,${height})`)
+        .call(d3.axisBottom(xScale).ticks(d3.timeMinute.every(30)).tickSize(-height).tickFormat(() => ""));
+      
+      grid.selectAll("line").attr("stroke", "hsl(var(--border))").style("opacity", 0.5);
+      grid.select(".domain").remove();
+
 
       const xAxis = d3.axisBottom(xScale)
         .tickFormat(d3.timeFormat("%H:%M") as (d: Date | { valueOf(): number; }, i: number) => string)
@@ -145,11 +177,10 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
 
       svg.append("g")
         .attr("class", "axis date-axis text-xs text-muted-foreground")
-        .attr("transform", `translate(0, ${height + 20})`)
+        .attr("transform", `translate(0, ${height + 25})`)
         .call(dateAxis)
         .call(g => g.select(".domain").remove())
         .selectAll("line").remove();
-
 
       const yAxis = d3.axisLeft(yScale);
       svg.append("g")
@@ -165,35 +196,14 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       }
 
       const mouseover = () => tooltipEl.style("opacity", 1);
-      const mousemoveBar = (event: MouseEvent, d: any) => {
-        tooltipEl.html(`
-            <div class="font-bold">Mẻ: ${d.Heat_ID} (${d.Steel_Grade})</div>
-            <div>Thiết bị: ${d.unit} (${d.group})</div>
-            <hr class="my-1"/>
-            <div>Bắt đầu: ${format(d.startTime, 'HH:mm dd/MM')}</div>
-            <div>Kết thúc: ${format(d.endTime, 'HH:mm dd/MM')}</div>
-            <div>Thời gian: ${d.Duration_min} phút</div>
-        `)
+      const mousemove = (event: MouseEvent, content: string) => {
+        tooltipEl.html(content)
         .style("left", (event.pageX + 15) + "px")
         .style("top", (event.pageY - 15) + "px");
       };
-      
-      const mousemoveLink = (event: MouseEvent, d: any) => {
-        const idleMinutes = d.op2.idleTimeMinutes;
-        tooltipEl.html(`
-            <div class="font-bold">Mẻ: ${d.Heat_ID} (${d.Steel_Grade})</div>
-            <div class="font-bold text-primary">Chuyển tiếp (Chờ)</div>
-            <hr class="my-1"/>
-            <div>Từ: ${d.op1.unit} (kết thúc ${format(d.op1.endTime, 'HH:mm')})</div>
-            <div>Đến: ${d.op2.unit} (bắt đầu ${format(d.op2.startTime, 'HH:mm')})</div>
-            ${idleMinutes > 0 ? `<div class="text-yellow-600">Thời gian chờ: ${idleMinutes} phút</div>` : ''}
-        `)
-        .style("left", (event.pageX + 15) + "px")
-        .style("top", (event.pageY - 15) + "px");
-      };
-
       const mouseleave = () => tooltipEl.style("opacity", 0);
 
+      // Draw links first (behind bars)
       svg.append("g")
         .selectAll("line.link")
         .data(linksData)
@@ -204,68 +214,70 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .attr("y1", d => (yScale(d.op1.unit) ?? 0) + yScale.bandwidth() / 2)
         .attr("x2", d => xScale(d.op2.startTime))
         .attr("y2", d => (yScale(d.op2.unit) ?? 0) + yScale.bandwidth() / 2)
-        .attr("stroke", d => heatColorScale(d.Heat_ID))
+        .attr("stroke", "#0A0A0A")
         .attr("stroke-width", 1.5)
-        .attr("stroke-dasharray", "3,3")
-        .style("opacity", d => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0.2)
-        .on("mouseover", mouseover)
-        .on("mousemove", mousemoveLink)
-        .on("mouseleave", mouseleave);
+        .attr("stroke-dasharray", "4,4")
+        .style("opacity", (d: any) => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0) // Hide if not selected
+        .style("pointer-events", "none");
 
-      svg.append("g")
+      // Draw bars
+      const bars = svg.append("g")
         .selectAll("rect.bar")
-        .data(allOperations)
+        .data(allOpsWithHeatInfo)
         .enter()
         .append("rect")
         .attr("class", "bar")
         .attr("x", d => xScale(d.startTime))
         .attr("y", d => yScale(d.unit)!)
-        .attr("width", d => Math.max(0, xScale(d.endTime) - xScale(d.startTime)))
+        .attr("width", d => Math.max(1, xScale(d.endTime) - xScale(d.startTime)))
         .attr("height", yScale.bandwidth())
-        .attr("fill", d => selectedHeatId === null || selectedHeatId === d.Heat_ID ? heatColorScale(d.Heat_ID) : "#cccccc")
-        .attr("rx", 3)
-        .attr("ry", 3)
-        .style("opacity", d => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0.5)
+        .attr("fill", d => getColor(d.sequenceInCaster, d.castingMachine).bg)
+        .attr("rx", 6)
+        .attr("ry", 6)
         .style("cursor", "pointer")
         .on("click", handleBarClick)
         .on("mouseover", mouseover)
-        .on("mousemove", mousemoveBar)
+        .on("mousemove", (event, d) => mousemove(event, `
+            <div class="font-bold">Mẻ: ${d.Heat_ID} (#${d.sequenceInCaster})</div>
+            <div>Thiết bị: ${d.unit}</div>
+            <hr class="my-1"/>
+            <div>Bắt đầu: ${format(d.startTime, 'HH:mm dd/MM')}</div>
+            <div>Kết thúc: ${format(d.endTime, 'HH:mm dd/MM')}</div>
+            <div>Thời gian: ${d.Duration_min} phút</div>
+        `))
         .on("mouseleave", mouseleave);
 
+      // Draw labels on bars
       svg.append("g")
         .selectAll("text.bar-label")
-        .data(allOperations)
+        .data(allOpsWithHeatInfo)
         .enter()
         .append("text")
         .attr("class", "bar-label")
-        .attr("x", d => xScale(d.startTime) + (xScale(d.endTime) - xScale(d.startTime)) / 2)
+        .attr("x", d => xScale(d.startTime) + 8) // Padding from left
         .attr("y", d => (yScale(d.unit) ?? 0) + yScale.bandwidth() / 2)
-        .attr("text-anchor", "middle")
         .attr("alignment-baseline", "middle")
-        .text(d => {
-            const barWidth = xScale(d.endTime) - xScale(d.startTime);
-            const estimatedTextWidth = d.Heat_ID.length * 6;
-            return (barWidth > estimatedTextWidth + 10) ? d.Heat_ID : "";
-        })
-        .attr("font-size", "11px")
+        .text(d => `${d.Heat_ID} (#${d.sequenceInCaster})`)
+        .attr("font-size", "12px")
         .attr("font-weight", 500)
-        .attr("fill", "white")
+        .attr("fill", d => getColor(d.sequenceInCaster, d.castingMachine).text)
         .style("pointer-events", "none")
-        .style("opacity", d => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0.3);
+        .style("opacity", d => {
+            const barWidth = xScale(d.endTime) - xScale(d.startTime);
+            const text = `${d.Heat_ID} (#${d.sequenceInCaster})`;
+            const estimatedTextWidth = text.length * 7; // Approximation
+            return barWidth > estimatedTextWidth ? 1 : 0;
+        });
         
       chartOutputEl.style.width = `${containerWidth}px`;
       chartOutputEl.style.overflowX = 'auto';
-
     };
 
-    // Store current scroll position before redrawing
     const scrollLeft = chartContainerRef.current?.scrollLeft;
     drawD3Gantt();
-     // Restore scroll position after redrawing
     if(chartContainerRef.current && scrollLeft) {
       chartContainerRef.current.scrollLeft = scrollLeft;
     }
-
 
     const handleResize = _.debounce(() => {
         drawD3Gantt();
@@ -276,15 +288,6 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
 
   }, [heats, timeRange]);
 
-
-  if (heats.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-[600px] text-muted-foreground">
-        <p>Không có dữ liệu hợp lệ để hiển thị.</p>
-      </div>
-    );
-  }
-
   return (
     <>
       <style jsx global>{`
@@ -293,8 +296,8 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
             background-color: hsl(var(--card));
             color: hsl(var(--card-foreground));
             border: 1px solid hsl(var(--border));
-            border-radius: var(--radius);
-            padding: 0.75rem;
+            border-radius: 8px;
+            padding: 8px;
             font-size: 0.875rem;
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             pointer-events: none;
@@ -305,11 +308,18 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .date-axis .tick text {
             font-weight: 600;
         }
+        .bar {
+            transition: fill 0.3s ease, opacity 0.3s ease;
+        }
+        .bar-label {
+            transition: opacity 0.3s ease;
+        }
+        .link {
+            transition: opacity 0.3s ease;
+        }
       `}</style>
       <div ref={chartContainerRef} className="w-full overflow-x-auto" />
       <div ref={tooltipRef} className="d3-tooltip" />
     </>
   );
 }
-
-    

@@ -1,7 +1,7 @@
 
 import type { ExcelRow, ValidationError, Operation, GanttHeat } from "./types";
-import { groupBy } from "lodash";
-import { startOfDay, parse, format } from 'date-fns';
+import { groupBy, sortBy } from "lodash";
+import { startOfDay, format } from 'date-fns';
 
 const UNIT_SEQUENCE: { [key: string]: { group: string; order: number } } = {
   KR1: { group: "KR", order: 1 },
@@ -30,7 +30,6 @@ function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, p
     if (isNaN(hours) || isNaN(minutes)) return null;
     
     let baseDate: Date;
-    // Priority: 1. Use the specific date from the row. 2. Use the date from the previous operation's end time. 3. Fallback to the initial reference date.
     if (dateStr && !isNaN(new Date(dateStr).getTime())) {
         baseDate = startOfDay(new Date(dateStr));
     } else if (prevOpEndTime) {
@@ -41,9 +40,7 @@ function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, p
 
     let currentTime = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes);
 
-    // Handle overnight logic for sequential operations within a heat
-    // If the current op time is significantly earlier than the previous op's end time, it must be the next day.
-    if (prevOpEndTime && currentTime < prevOpEndTime && prevOpEndTime.getTime() - currentTime.getTime() > 12 * 60 * 60 * 1000) { // More than 12h difference
+    if (prevOpEndTime && currentTime < prevOpEndTime && prevOpEndTime.getTime() - currentTime.getTime() > 12 * 60 * 60 * 1000) {
         currentTime.setDate(currentTime.getDate() + 1);
     }
     
@@ -54,7 +51,6 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
     const errors: ValidationError[] = [];
     const validHeats: GanttHeat[] = [];
     
-    // Use the date from the very first row as a global fallback if no other date info is available.
     const firstDateStr = rows.find(r => r.dateStr)?.dateStr;
     const globalBaseDate = firstDateStr ? startOfDay(new Date(firstDateStr)) : new Date();
 
@@ -64,7 +60,6 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
         const heatRows = heats[heatId];
         let heatHasFatalError = false;
 
-        // Sort by sequence number if available, then by raw index to maintain stability for parsing
         const sortedRowsForParsing = heatRows.sort((a, b) => {
             if (a.seqNum != null && b.seqNum != null) {
                  if(a.seqNum !== b.seqNum) return a.seqNum - b.seqNum;
@@ -78,12 +73,11 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
         const tempOps: (Operation & { raw: ExcelRow })[] = [];
         let lastOpEndTime: Date | undefined = undefined;
 
-        // First pass: Parse times and create temporary operations
         for (const row of sortedRowsForParsing) {
              const unitInfo = UNIT_SEQUENCE[row.unit.toUpperCase()];
             if (!unitInfo) {
                 errors.push({ heat_id: heatId, kind: 'UNIT', unit: row.unit, message: `Đơn vị không xác định: '${row.unit}'.`, opIndex: row.rawIndex });
-                continue; // It's a warning, but we can't process it.
+                continue;
             }
 
             const startTime = parseTimeWithDate(row.dateStr, row.startStr, globalBaseDate, lastOpEndTime);
@@ -93,7 +87,6 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
                  continue;
             }
 
-            // For end time, use startTime as the reference for overnight logic to handle cases where an op crosses midnight
             const endTime = parseTimeWithDate(row.dateStr, row.endStr, globalBaseDate, startTime);
             if (!endTime) {
                  errors.push({ heat_id: heatId, kind: 'FORMAT', unit: row.unit, message: `Thời gian kết thúc không hợp lệ '${row.endStr}'.`, opIndex: row.rawIndex });
@@ -101,13 +94,10 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
                  continue;
             }
             
-            const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
-            if (duration < 0) {
-                 // The time parsing logic should already handle overnight, so a negative duration here is a real error.
-                errors.push({ heat_id: heatId, kind: 'TIME', unit: row.unit, message: `Thời gian kết thúc phải sau thời gian bắt đầu.`, opIndex: row.rawIndex });
-                heatHasFatalError = true;
-                continue;
+            if (endTime < startTime) {
+                endTime.setDate(endTime.getDate() + 1);
             }
+            const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
 
             tempOps.push({
                 unit: row.unit,
@@ -123,13 +113,18 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
 
         if (heatHasFatalError) continue;
 
-        // Second pass: Sort by actual start time for logic validation
         const ops = tempOps.sort((a,b) => a.startTime.getTime() - b.startTime.getTime());
 
-        // === Final Validation Rules on Sorted Operations ===
         let hasValidationError = false;
         
-        // Rule: A heat can't be on multiple units of the same group (e.g. BOF1 and BOF2), *except for LF*.
+        for (let i = 1; i < ops.length; i++) {
+            if (ops[i].startTime < ops[i - 1].endTime) {
+                // This is an overlap, but we are allowing it as per user request.
+                // You could add a warning here if needed.
+                // errors.push({ heat_id: heatId, kind: 'OVERLAP', message: `Công đoạn ${ops[i].unit} bắt đầu trước khi ${ops[i - 1].unit} kết thúc.` });
+            }
+        }
+        
         const groupCounts = ops.reduce((acc, op) => {
             acc[op.group] = (acc[op.group] || 0) + 1;
             return acc;
@@ -143,8 +138,6 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
             }
         }
 
-
-        // Rule: LF requires a preceding BOF.
         const lfOps = ops.filter(op => op.group === 'LF');
         const bofOp = ops.find(op => op.group === 'BOF');
 
@@ -153,41 +146,52 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
              hasValidationError = true;
         }
 
-        // Rule: If LF exists, its start time must be after BOF's end time.
         if (bofOp && lfOps.length > 0) {
             for (const lfOp of lfOps) {
                 if (lfOp.startTime < bofOp.endTime) {
-                     errors.push({ heat_id: heatId, kind: 'ROUTING', message: `LF (${lfOp.unit}) bắt đầu trước khi BOF (${bofOp.unit}) kết thúc.` });
-                     hasValidationError = true;
+                     // Allow overlap but could be a warning
                 }
             }
         }
 
-        // If no fatal validation errors for this heat, calculate final properties and add it.
         if (!hasValidationError) {
-            // Recalculate idle times based on final sorted order
             for (let i = 1; i < ops.length; i++) {
                 const idle = Math.round((ops[i].startTime.getTime() - ops[i - 1].endTime.getTime()) / (1000 * 60));
                 ops[i].idleTimeMinutes = idle > 0 ? idle : 0;
             }
             if (ops.length > 0) {
-              ops[0].idleTimeMinutes = 0; // First operation has no preceding idle time
+              ops[0].idleTimeMinutes = 0;
             }
 
-
-            const hasCaster = ops.some(op => op.group === 'CASTER');
+            const casterOp = ops.find(op => op.group === 'CASTER');
             const totalDuration = ops.reduce((acc, op) => acc + op.Duration_min, 0);
             const totalIdleTime = ops.reduce((acc, op) => acc + (op.idleTimeMinutes || 0), 0);
 
             validHeats.push({
                 Heat_ID: heatId,
                 Steel_Grade: heatRows[0].steelGrade,
-                operations: ops.map(({raw, ...op}) => op), // remove raw data
-                isComplete: hasCaster,
+                operations: ops.map(({raw, ...op}) => op),
+                isComplete: !!casterOp,
                 totalDuration,
-                totalIdleTime
+                totalIdleTime,
+                castingMachine: casterOp?.unit, // Add casting machine
+                sequenceInCaster: undefined, // Will be calculated next
             });
         }
+    }
+
+    // Post-process to calculate sequenceInCaster
+    const heatsByCaster = groupBy(validHeats.filter(h => h.castingMachine), 'castingMachine');
+
+    for (const caster in heatsByCaster) {
+        const sortedHeatsInCaster = sortBy(heatsByCaster[caster], h => {
+            const casterOp = h.operations.find(op => op.unit === caster);
+            return casterOp ? casterOp.startTime.getTime() : Infinity;
+        });
+
+        sortedHeatsInCaster.forEach((heat, index) => {
+            heat.sequenceInCaster = index + 1;
+        });
     }
 
     return { validHeats, errors };

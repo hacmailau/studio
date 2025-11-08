@@ -45,12 +45,15 @@ export interface Heat {
 }
 
 // Validated heat data ready for Gantt chart
-export interface GanttHeat extends Heat {}
+export interface GanttHeat extends Heat {
+    castingMachine?: string; // e.g., 'TSC1', 'BCM2'
+    sequenceInCaster?: number; // The Nth heat for that caster on that day
+}
 
 // Structure for validation errors
 export interface ValidationError {
   heat_id: string;
-  kind: 'FORMAT' | 'ROUTING' | 'TIME' | 'UNIT' | 'MISSING' | 'PLACEHOLDER';
+  kind: 'FORMAT' | 'ROUTING' | 'TIME' | 'UNIT' | 'MISSING' | 'PLACEHOLDER' | 'OVERLAP';
   message: string;
   opIndex?: number;
   unit?: string;
