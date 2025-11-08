@@ -22,12 +22,13 @@ const UNIT_ORDER = [
   "BCM1", "BCM2", "BCM3", "TSC1", "TSC2"
 ];
 
+// New color palette as requested
 const CASTER_HUES: { [key: string]: number } = {
-    TSC1: 207, // Blue (#2196F3)
-    TSC2: 291, // Purple (#8E24AA)
-    BCM1: 124, // Green (#43A047)
-    BCM2: 36,  // Orange (#FB8C00)
-    BCM3: 2,   // Red (#E53935)
+    TSC1: 210, // Blue (#3399FF)
+    TSC2: 36,  // Orange (#FF9900)
+    BCM1: 270, // Purple (#9966FF)
+    BCM2: 48,  // Yellow (#FFCC00)
+    BCM3: 165, // Teal/Green (#00CC99)
 };
 
 // Function to get color based on sequence and caster
@@ -36,15 +37,16 @@ function getColor(sequence: number | undefined, caster: string | undefined): { b
         return { bg: '#cccccc', text: '#0A0A0A' }; // Default gray
     }
     const hue = CASTER_HUES[caster] ?? 240;
-    const maxSequence = 50;
+    const maxSequence = 50; // As per design spec
     
-    // Inverted intensity calculation
-    // Sequence 1 -> intensity should be high (for dark/dim)
-    // Sequence 50 -> intensity should be low (for light/vibrant)
-    const intensity = 1 - (Math.min(sequence, maxSequence) - 1) / (maxSequence - 1);
+    // Calculate intensity: Higher sequence = darker shade (intensity closer to 1)
+    const intensity = Math.min(sequence, maxSequence) / maxSequence;
 
-    const saturation = 0.45 + 0.55 * (1 - intensity); // More saturation for later (brighter) heats
-    const lightness = 0.42 + 0.50 * (1 - intensity);  // More lightness for later (brighter) heats
+    // Adjust saturation and lightness based on intensity
+    // Earlier sequences (low intensity) are lighter and less saturated
+    // Later sequences (high intensity) are darker and more saturated
+    const saturation = 0.45 + 0.55 * intensity;
+    const lightness = 0.92 - 0.50 * intensity;
 
     const bgColor = d3.hsl(hue, saturation, lightness).toString();
     const textColor = getContrastingTextColor(lightness);
@@ -70,9 +72,15 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
     const svg = d3.select(svgRef.current);
     
     // Fade non-selected elements
-    svg.selectAll("rect.bar, text.bar-label, line.link")
+    svg.selectAll("rect.bar, text.bar-label")
        .transition().duration(300)
        .style("opacity", (d: any) => selectedHeatId === null || d.Heat_ID === selectedHeatId ? 1 : 0.45);
+
+    // Show/hide lineage links
+    svg.selectAll("line.link")
+        .transition().duration(300)
+        .style("opacity", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 0.7 : 0);
+
 
   }, [selectedHeatId, heats]);
 
@@ -222,7 +230,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .attr("stroke", "#0A0A0A")
         .attr("stroke-width", 1.5)
         .attr("stroke-dasharray", "4,4")
-        .style("opacity", (d: any) => selectedHeatId === null || selectedHeatId === d.Heat_ID ? 1 : 0) // Hide if not selected
+        .style("opacity", 0) // Hide by default
         .style("pointer-events", "none");
 
       // Draw bars
