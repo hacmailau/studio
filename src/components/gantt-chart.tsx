@@ -101,7 +101,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
             castingMachine: heat.castingMachine,
             sequenceInCaster: heat.sequenceInCaster,
         }))
-      );
+      ).sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); // Sort descending so earliest start is rendered last (on top)
       
       if(allOpsWithHeatInfo.length === 0) return;
 
