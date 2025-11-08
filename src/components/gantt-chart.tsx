@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -33,7 +34,6 @@ const CASTER_COLORS: { [key: string]: string } = {
 function getColor(caster: string | undefined): { bg: string; text: string } {
     const bgColor = caster ? CASTER_COLORS[caster] ?? '#cccccc' : '#cccccc';
 
-    // Determine if the background color is light or dark to set a contrasting text color
     const color = d3.color(bgColor);
     const lightness = color ? (d3.hsl(color).l) : 0.5;
     const textColor = getContrastingTextColor(lightness);
@@ -66,7 +66,8 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
     // Show/hide lineage links
     svg.selectAll("line.link")
         .transition().duration(300)
-        .style("opacity", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 0.9 : 0);
+        .style("opacity", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 0.9 : 0.3)
+        .attr("stroke-width", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 2 : 1.5);
 
 
   }, [selectedHeatId, heats]);
@@ -215,9 +216,9 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .attr("x2", d => xScale(d.op2.startTime))
         .attr("y2", d => (yScale(d.op2.unit) ?? 0) + yScale.bandwidth() / 2)
         .attr("stroke", "hsl(var(--foreground))")
-        .attr("stroke-width", 2)
+        .attr("stroke-width", 1.5)
         .attr("stroke-dasharray", "5,3")
-        .style("opacity", 0) // Hide by default
+        .style("opacity", 0.3) // Show by default with low opacity
         .style("pointer-events", "none");
 
       // Draw bars
@@ -327,7 +328,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
             transition: opacity 0.3s ease;
         }
         .link {
-            transition: opacity 0.3s ease;
+            transition: opacity 0.3s ease, stroke-width 0.3s ease;
         }
       `}</style>
       <div ref={chartContainerRef} className="w-full overflow-x-auto" />
