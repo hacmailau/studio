@@ -23,7 +23,7 @@ const UNIT_ORDER = [
 ];
 
 const CASTER_COLORS: { [key: string]: string } = {
-    TSC1: "#FF6500",
+    TSC1: "#41A67E",
     TSC2: "#05339C",
     BCM1: "#43A047",
     BCM2: "#FB8C00",
