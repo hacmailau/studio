@@ -22,13 +22,12 @@ const UNIT_ORDER = [
   "BCM1", "BCM2", "BCM3", "TSC1", "TSC2"
 ];
 
-// New color palette as requested
 const CASTER_HUES: { [key: string]: number } = {
-    TSC1: 210, // Blue (#3399FF)
-    TSC2: 36,  // Orange (#FF9900)
-    BCM1: 270, // Purple (#9966FF)
-    BCM2: 48,  // Yellow (#FFCC00)
-    BCM3: 165, // Teal/Green (#00CC99)
+    TSC1: 221, // #05339C
+    TSC2: 211, // #1E3E62
+    BCM1: 122, // #43A047 (Green)
+    BCM2: 35,  // #FB8C00 (Orange)
+    BCM3: 1,   // #E53935 (Red)
 };
 
 // Function to get color based on sequence and caster
@@ -37,14 +36,12 @@ function getColor(sequence: number | undefined, caster: string | undefined): { b
         return { bg: '#cccccc', text: '#0A0A0A' }; // Default gray
     }
     const hue = CASTER_HUES[caster] ?? 240;
-    const maxSequence = 50; // As per design spec
+    const maxSequence = 50; 
     
-    // Calculate intensity: Higher sequence = darker shade (intensity closer to 1)
+    // Higher sequence = darker shade (intensity closer to 1)
     const intensity = Math.min(sequence, maxSequence) / maxSequence;
 
     // Adjust saturation and lightness based on intensity
-    // Earlier sequences (low intensity) are lighter and less saturated
-    // Later sequences (high intensity) are darker and more saturated
     const saturation = 0.45 + 0.55 * intensity;
     const lightness = 0.92 - 0.50 * intensity;
 
@@ -72,14 +69,14 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
     const svg = d3.select(svgRef.current);
     
     // Fade non-selected elements
-    svg.selectAll("rect.bar, text.bar-label")
+    svg.selectAll("rect.bar, .bar-label")
        .transition().duration(300)
        .style("opacity", (d: any) => selectedHeatId === null || d.Heat_ID === selectedHeatId ? 1 : 0.45);
 
     // Show/hide lineage links
     svg.selectAll("line.link")
         .transition().duration(300)
-        .style("opacity", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 0.7 : 0);
+        .style("opacity", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 0.9 : 0);
 
 
   }, [selectedHeatId, heats]);
@@ -227,9 +224,9 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .attr("y1", d => (yScale(d.op1.unit) ?? 0) + yScale.bandwidth() / 2)
         .attr("x2", d => xScale(d.op2.startTime))
         .attr("y2", d => (yScale(d.op2.unit) ?? 0) + yScale.bandwidth() / 2)
-        .attr("stroke", "#0A0A0A")
-        .attr("stroke-width", 1.5)
-        .attr("stroke-dasharray", "4,4")
+        .attr("stroke", "hsl(var(--foreground))")
+        .attr("stroke-width", 2)
+        .attr("stroke-dasharray", "5,3")
         .style("opacity", 0) // Hide by default
         .style("pointer-events", "none");
 
@@ -261,26 +258,38 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .on("mouseleave", mouseleave);
 
       // Draw labels on bars
-      svg.append("g")
-        .selectAll("text.bar-label")
+      const labels = svg.append("g")
+        .selectAll("g.bar-label")
         .data(allOpsWithHeatInfo)
         .enter()
-        .append("text")
+        .append("g")
         .attr("class", "bar-label")
-        .attr("x", d => xScale(d.startTime) + 8) // Padding from left
-        .attr("y", d => (yScale(d.unit) ?? 0) + yScale.bandwidth() / 2)
+        .attr("transform", d => `translate(${xScale(d.startTime) + 8}, ${(yScale(d.unit) ?? 0) + yScale.bandwidth() / 2})`)
+        .style("pointer-events", "none");
+        
+      labels.append("text")
+        .attr("class", "heat-id-label")
         .attr("alignment-baseline", "middle")
-        .text(d => `${d.Heat_ID} (#${d.sequenceInCaster})`)
+        .text(d => d.Heat_ID)
         .attr("font-size", "12px")
         .attr("font-weight", 500)
+        .attr("fill", d => getColor(d.sequenceInCaster, d.castingMachine).text);
+
+      labels.append("text")
+        .attr("class", "sequence-label")
+        .attr("alignment-baseline", "middle")
+        .text(d => d.group === 'CASTER' ? ` (#${d.sequenceInCaster})` : "")
+        .attr("font-size", "10px")
+        .attr("font-weight", 400)
         .attr("fill", d => getColor(d.sequenceInCaster, d.castingMachine).text)
-        .style("pointer-events", "none")
-        .style("opacity", d => {
-            const barWidth = xScale(d.endTime) - xScale(d.startTime);
-            const text = `${d.Heat_ID} (#${d.sequenceInCaster})`;
-            const estimatedTextWidth = text.length * 7; // Approximation
-            return barWidth > estimatedTextWidth ? 1 : 0;
-        });
+        .attr("dx", d => (d.Heat_ID.length * 7)); // Approximate offset
+
+      // Hide labels that don't fit
+      labels.style("opacity", function(d) {
+          const barWidth = xScale(d.endTime) - xScale(d.startTime);
+          const labelWidth = this.getBBox().width + 16; // Add padding
+          return barWidth > labelWidth ? 1 : 0;
+      });
         
       chartOutputEl.style.width = `${containerWidth}px`;
       chartOutputEl.style.overflowX = 'auto';

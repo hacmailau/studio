@@ -1,7 +1,7 @@
 
 import type { ExcelRow, ValidationError, Operation, GanttHeat } from "./types";
 import { groupBy, sortBy } from "lodash";
-import { startOfDay, format } from 'date-fns';
+import { startOfDay, format, subHours, addHours } from 'date-fns';
 
 const UNIT_SEQUENCE: { [key: string]: { group: string; order: number } } = {
   KR1: { group: "KR", order: 1 },
@@ -180,18 +180,47 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
         }
     }
 
-    // Post-process to calculate sequenceInCaster
-    const heatsByCaster = groupBy(validHeats.filter(h => h.castingMachine), 'castingMachine');
+    // Post-process to calculate sequenceInCaster based on a "production day" (8am to 8am)
+    const getProductionDayKey = (date: Date): string => {
+        const shiftedDate = subHours(date, 8); // Shift time back by 8 hours
+        return format(shiftedDate, 'yyyy-MM-dd');
+    };
+    
+    // Group heats by casting machine and then by production day
+    const heatsByCasterAndDay: Record<string, Record<string, GanttHeat[]>> = {};
 
-    for (const caster in heatsByCaster) {
-        const sortedHeatsInCaster = sortBy(heatsByCaster[caster], h => {
-            const casterOp = h.operations.find(op => op.unit === caster);
-            return casterOp ? casterOp.startTime.getTime() : Infinity;
-        });
+    validHeats.forEach(heat => {
+        if (!heat.castingMachine) return;
 
-        sortedHeatsInCaster.forEach((heat, index) => {
-            heat.sequenceInCaster = index + 1;
-        });
+        const casterOp = heat.operations.find(op => op.unit === heat.castingMachine);
+        if (!casterOp) return;
+        
+        const dayKey = getProductionDayKey(casterOp.startTime);
+
+        if (!heatsByCasterAndDay[heat.castingMachine]) {
+            heatsByCasterAndDay[heat.castingMachine] = {};
+        }
+        if (!heatsByCasterAndDay[heat.castingMachine][dayKey]) {
+            heatsByCasterAndDay[heat.castingMachine][dayKey] = [];
+        }
+        heatsByCasterAndDay[heat.castingMachine][dayKey].push(heat);
+    });
+
+    // Sort heats within each group and assign sequence number
+    for (const caster in heatsByCasterAndDay) {
+        for (const day in heatsByCasterAndDay[caster]) {
+            const sortedHeats = sortBy(heatsByCasterAndDay[caster][day], h => {
+                const casterOp = h.operations.find(op => op.unit === h.castingMachine);
+                return casterOp ? casterOp.startTime.getTime() : Infinity;
+            });
+
+            sortedHeats.forEach((heat, index) => {
+                const originalHeat = validHeats.find(vh => vh.Heat_ID === heat.Heat_ID);
+                if (originalHeat) {
+                    originalHeat.sequenceInCaster = index + 1;
+                }
+            });
+        }
     }
 
     return { validHeats, errors };
