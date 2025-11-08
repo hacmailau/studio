@@ -23,11 +23,11 @@ const UNIT_ORDER = [
 ];
 
 const CASTER_COLORS: { [key: string]: string } = {
-    TSC1: "#FF6500", 
-    TSC2: "#05339C", 
-    BCM1: "#43A047", // Green
-    BCM2: "#FB8C00", // Orange
-    BCM3: "#E53935", // Red
+    TSC1: "#FF6500",
+    TSC2: "#05339C",
+    BCM1: "#43A047",
+    BCM2: "#FB8C00",
+    BCM3: "#E53935",
 };
 
 // Function to get color based on caster
@@ -272,7 +272,13 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       labels.append("text")
         .attr("class", "sequence-label")
         .attr("alignment-baseline", "middle")
-        .text(d => ` (#${d.sequenceInCaster})`)
+        .text(d => {
+            // Only show sequence label for Caster units
+            if (d.group === 'CASTER') {
+                return ` (#${d.sequenceInCaster})`;
+            }
+            return '';
+        })
         .attr("font-size", "10px")
         .attr("font-weight", 400)
         .attr("fill", d => getColor(d.castingMachine).text)
