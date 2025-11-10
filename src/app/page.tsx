@@ -142,6 +142,10 @@ export default function Home() {
   }, []);
 
   const updateStats = (heats: GanttHeat[]) => {
+       if (heats.length === 0) {
+         setStats(null);
+         return;
+       }
        const uniqueHeats = new Set(heats.map(h => h.Heat_ID));
        const totalIdle = heats.reduce((acc, heat) => acc + heat.totalIdleTime, 0);
        const totalProcessingTime = heats.reduce((acc, heat) => acc + heat.totalDuration, 0);
@@ -206,23 +210,23 @@ export default function Home() {
 
   const handleStatClick = (heatId: string | null) => {
     if (heatId) {
-      const heat = filteredGanttData.find(h => h.Heat_ID === heatId);
+      const heat = ganttData.find(h => h.Heat_ID === heatId);
       if (heat) {
         setSelectedHeatId(heat.Heat_ID);
         const heatDate = startOfDay(heat.operations[0].startTime);
         
-        // Find if this date exists in the current range
-        if (dateRange?.from && dateRange?.to) {
-           if (!isWithinInterval(heatDate, {start: dateRange.from, end: dateRange.to})) {
-              // If not, set the range to the month of the heat
-              setDateRange({ from: heatDate, to: heatDate });
-           }
-        } else {
-             setDateRange({ from: heatDate, to: heatDate });
-        }
+        const isHeatInCurrentFilter = filteredGanttData.some(h => h.Heat_ID === heatId);
 
-        const ganttElement = document.getElementById('gantt-chart-card');
-        ganttElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (!isHeatInCurrentFilter) {
+            setDateRange({ from: heatDate, to: heatDate });
+        }
+        
+        // Use a timeout to ensure the chart has re-rendered if the date changed
+        setTimeout(() => {
+            const ganttElement = document.getElementById('gantt-chart-card');
+            ganttElement?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 50);
+
       }
     }
   };
@@ -583,7 +587,7 @@ export default function Home() {
                 </Card>
             )}
 
-            {Object.keys(detailedGradeStats).length > 0 && !selectedHeatDetails && (
+            {Object.keys(detailedGradeStats).length > 0 && !selectedHeatId && (
                 <Card>
                     <CardHeader>
                         <CardTitle className="font-headline">Báo cáo chi tiết theo mác thép</CardTitle>
@@ -596,13 +600,19 @@ export default function Home() {
                                     <TableRow>
                                         <TableHead rowSpan={2} className="align-bottom">Mác thép (Grade)</TableHead>
                                         <TableHead rowSpan={2} className="text-center align-bottom">Số mẻ</TableHead>
-                                        <TableHead rowSpan={2} className="text-right align-bottom">TB KR</TableHead>
+                                        <TableHead colSpan={3} className="text-center border-l">KR</TableHead>
                                         <TableHead colSpan={3} className="text-center border-l">BOF</TableHead>
                                         <TableHead colSpan={3} className="text-center border-l">LF</TableHead>
-                                        <TableHead rowSpan={2} className="text-right align-bottom border-l">TB Đúc</TableHead>
+                                        <TableHead colSpan={3} className="text-center border-l">Đúc</TableHead>
                                     </TableRow>
                                     <TableRow>
-                                        <TableHead className="text-right">TB</TableHead>
+                                        <TableHead className="text-right border-l">TB</TableHead>
+                                        <TableHead className="text-right">Min</TableHead>
+                                        <TableHead className="text-right">Max</TableHead>
+                                        <TableHead className="text-right border-l">TB</TableHead>
+                                        <TableHead className="text-right">Min</TableHead>
+                                        <TableHead className="text-right">Max</TableHead>
+                                        <TableHead className="text-right border-l">TB</TableHead>
                                         <TableHead className="text-right">Min</TableHead>
                                         <TableHead className="text-right">Max</TableHead>
                                         <TableHead className="text-right border-l">TB</TableHead>
@@ -616,7 +626,9 @@ export default function Home() {
                                             <TableCell className="font-medium">{grade}</TableCell>
                                             <TableCell className="text-center">{stats.count}</TableCell>
                                             
-                                            <TableCell className="text-right">{stats.kr.avg > 0 ? stats.kr.avg : '-'}</TableCell>
+                                            <TableCell className="text-right border-l">{stats.kr.avg > 0 ? stats.kr.avg : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.kr.min > 0 ? stats.kr.min : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.kr.max > 0 ? stats.kr.max : '-'}</TableCell>
                                             
                                             <TableCell className="text-right border-l">{stats.bof.avg > 0 ? stats.bof.avg : '-'}</TableCell>
                                             <TableCell className="text-right">{stats.bof.min > 0 ? stats.bof.min : '-'}</TableCell>
@@ -627,6 +639,8 @@ export default function Home() {
                                             <TableCell className="text-right">{stats.lf.max > 0 ? stats.lf.max : '-'}</TableCell>
                                             
                                             <TableCell className="text-right border-l">{stats.caster.avg > 0 ? stats.caster.avg : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.caster.min > 0 ? stats.caster.min : '-'}</TableCell>
+                                            <TableCell className="text-right">{stats.caster.max > 0 ? stats.caster.max : '-'}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -642,3 +656,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
