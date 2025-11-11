@@ -7,7 +7,6 @@ import { FileUploader } from "@/components/file-uploader";
 import { GanttChart } from "@/components/gantt-chart";
 import { ValidationErrors } from "@/components/validation-errors";
 import { parseExcel } from "@/lib/excel-parser";
-import { validateAndTransform } from "@/lib/validator";
 import type { GanttHeat, ValidationError, ExcelRow, Operation } from "@/lib/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { HrcLtGanttChartIcon } from "@/components/icons";
@@ -24,6 +23,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { groupBy } from "lodash";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
+import { processGoogleSheetAction, uploadHeatsAction } from "./actions";
 
 
 interface OpStat {
@@ -119,21 +119,21 @@ export default function Home() {
     setSelectedHeatId(null);
   }
 
-  const processData = useCallback((parsedRows: ExcelRow[], parseWarnings: ValidationError[]) => {
-      setPreviewData(parsedRows.slice(0, 20));
-      setCleanJson(parsedRows);
+  const processData = useCallback((data: {
+      ganttData: GanttHeat[];
+      validationErrors: ValidationError[];
+      warnings: ValidationError[];
+      previewData: ExcelRow[];
+      cleanJson: ExcelRow[];
+  }) => {
+      setGanttData(data.ganttData);
+      setValidationErrors(data.validationErrors);
+      setWarnings(data.warnings);
+      setPreviewData(data.previewData);
+      setCleanJson(data.cleanJson);
 
-      const { validHeats, errors: validationErrs } = validateAndTransform(parsedRows);
-      
-      const allWarnings = [...parseWarnings, ...validationErrs.filter(e => e.kind === 'PLACEHOLDER' || e.kind === 'UNIT')];
-      const allErrors = validationErrs.filter(e => e.kind !== 'PLACEHOLDER' && e.kind !== 'UNIT');
-      
-      setGanttData(validHeats);
-      setValidationErrors(allErrors);
-      setWarnings(allWarnings);
-
-      if (validHeats.length > 0) {
-        const dates = [...new Set(validHeats.flatMap(h => h.operations.map(op => startOfDay(op.startTime).getTime())))].map(t => new Date(t));
+      if (data.ganttData.length > 0) {
+        const dates = [...new Set(data.ganttData.flatMap(h => h.operations.map(op => startOfDay(op.startTime).getTime())))].map(t => new Date(t));
         setAvailableDates(dates);
         
         if (dates.length > 0) {
@@ -277,10 +277,18 @@ export default function Home() {
   const handleFileProcess = async (file: File) => {
     setIsLoading(true);
     resetState();
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('file', file);
 
     try {
-      const { rows: parsedRows, warnings: parseWarnings } = await parseExcel(file);
-      processData(parsedRows, parseWarnings);
+      const result = await uploadHeatsAction(formData);
+      if(result.success) {
+        processData(result.data);
+      } else {
+        setError(result.error || "Đã xảy ra lỗi không xác định.");
+      }
     } catch (e: any) {
       console.error(e);
       setError(`Đã xảy ra lỗi: ${e.message}`);
@@ -296,12 +304,14 @@ export default function Home() {
     }
     setIsLoading(true);
     resetState();
+    setError(null);
     try {
-      // Logic to fetch and process from Google Sheet will be added here
-      console.log("Processing Google Sheet:", googleSheetUrl);
-      // const { rows: parsedRows, warnings: parseWarnings } = await parseGoogleSheet(googleSheetUrl);
-      // processData(parsedRows, parseWarnings);
-      setError("Chức năng đang được phát triển."); // Placeholder
+      const result = await processGoogleSheetAction(googleSheetUrl);
+      if (result.success && result.data) {
+        processData(result.data);
+      } else {
+        setError(result.error || "Không thể xử lý Google Sheet.");
+      }
     } catch (e: any) {
       console.error(e);
       setError(`Đã xảy ra lỗi khi xử lý Google Sheet: ${e.message}`);
@@ -604,7 +614,7 @@ export default function Home() {
                 ) : (
                   <div className="flex flex-col items-center justify-center h-[600px] text-muted-foreground gap-4">
                     <FileJson className="w-16 h-16" />
-                    <p className="text-center">Tải lên tệp Excel để tạo biểu đồ Gantt.</p>
+                    <p className="text-center">Tải lên tệp Excel hoặc nhập từ Google Sheet để tạo biểu đồ Gantt.</p>
                      <p className="text-xs text-center max-w-sm">Hỗ trợ các cột: Date, Heat_ID, Steel_Grade, Unit, Start_Time, End_Time, sequence_number (tùy chọn).</p>
                   </div>
                 )}
