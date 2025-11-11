@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, Info, Star, Zap } from "lucide-react";
+import { Loader2, ServerCrash, Download, Trash2, FileJson, ListX, BarChart2, FileDown, CalendarIcon, Timer, Hourglass, AlertCircle, Info, Star, Zap, Link } from "lucide-react";
 import { FileUploader } from "@/components/file-uploader";
 import { GanttChart } from "@/components/gantt-chart";
 import { ValidationErrors } from "@/components/validation-errors";
@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { HrcLtGanttChartIcon } from "@/components/icons";
 import { Table, TableBody, TableCell, TableHeader, TableHead, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
@@ -79,6 +80,8 @@ export default function Home() {
   const [dateRange, setDateRange] = useState<DateRange | undefined>(undefined);
   const [availableDates, setAvailableDates] = useState<Date[]>([]);
   const [selectedHeatId, setSelectedHeatId] = useState<string | null>(null);
+  const [googleSheetUrl, setGoogleSheetUrl] = useState('');
+
 
   const selectedHeatDetails = useMemo(() => {
     if (!selectedHeatId) return null;
@@ -284,6 +287,27 @@ export default function Home() {
     }
   };
 
+  const handleSheetProcess = async () => {
+    if (!googleSheetUrl) {
+      setError("Vui lòng nhập URL của Google Sheet.");
+      return;
+    }
+    setIsLoading(true);
+    resetState();
+    try {
+      // Logic to fetch and process from Google Sheet will be added here
+      console.log("Processing Google Sheet:", googleSheetUrl);
+      // const { rows: parsedRows, warnings: parseWarnings } = await parseGoogleSheet(googleSheetUrl);
+      // processData(parsedRows, parseWarnings);
+      setError("Chức năng đang được phát triển."); // Placeholder
+    } catch (e: any) {
+      console.error(e);
+      setError(`Đã xảy ra lỗi khi xử lý Google Sheet: ${e.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   const exportToJson = () => {
     const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
       JSON.stringify(cleanJson, null, 2)
@@ -325,7 +349,45 @@ export default function Home() {
       <main className="flex-1 p-4 md:p-6 lg:p-8">
         <div className="grid gap-6 xl:grid-cols-4">
           <div className="flex flex-col gap-6 xl:col-span-1">
-            <FileUploader onFileProcess={handleFileProcess} isLoading={isLoading} />
+             <Card>
+                <CardHeader>
+                    <CardTitle className="font-headline">Nguồn dữ liệu</CardTitle>
+                    <CardDescription>Tải tệp lên hoặc nhập từ Google Sheet.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Tabs defaultValue="upload" className="w-full">
+                        <TabsList className="grid w-full grid-cols-2">
+                            <TabsTrigger value="upload">Tải tệp lên</TabsTrigger>
+                            <TabsTrigger value="sheet">Google Sheet</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="upload" className="mt-4">
+                            <FileUploader onFileProcess={handleFileProcess} isLoading={isLoading} />
+                        </TabsContent>
+                        <TabsContent value="sheet" className="mt-4 space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="sheet-url">URL Google Sheet</Label>
+                                <Input 
+                                    id="sheet-url"
+                                    type="url"
+                                    placeholder="https://docs.google.com/spreadsheets/d/..."
+                                    value={googleSheetUrl}
+                                    onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                                    disabled={isLoading}
+                                />
+                            </div>
+                            <Button onClick={handleSheetProcess} disabled={isLoading || !googleSheetUrl} className="w-full">
+                                {isLoading ? (
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Link className="w-4 h-4 mr-2" />
+                                )}
+                                {isLoading ? "Đang xử lý..." : "Nhập từ Google Sheet"}
+                            </Button>
+                        </TabsContent>
+                    </Tabs>
+                </CardContent>
+            </Card>
+
 
             <a href="/sample-data.xlsx" download="sample-data.xlsx">
               <Button variant="outline" className="w-full">
@@ -656,5 +718,3 @@ export default function Home() {
     </div>
   );
 }
-
-    

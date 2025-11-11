@@ -52,12 +52,7 @@ export function FileUploader({ onFileProcess, isLoading }: FileUploaderProps) {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-headline">Nhập lịch sản xuất</CardTitle>
-        <CardDescription>Tải lên lịch sản xuất thép (.xlsx, .xls, .csv)</CardDescription>
-      </CardHeader>
-      <CardContent>
+    <div>
         <form id="form-file-upload" onDragEnter={handleDrag} onSubmit={(e) => e.preventDefault()} className="h-full w-full">
             <input
             type="file"
@@ -90,7 +85,6 @@ export function FileUploader({ onFileProcess, isLoading }: FileUploaderProps) {
           )}
           {isLoading ? "Đang xử lý..." : "Hoặc chọn tệp"}
         </Button>
-      </CardContent>
-    </Card>
+    </div>
   );
 }
