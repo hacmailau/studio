@@ -26,7 +26,13 @@ const UNIT_SEQUENCE: { [key: string]: { group: string; order: number } } = {
 function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, prevOpEndTime?: Date): Date | null {
     if (!hhmm || typeof hhmm !== 'string') return null;
 
-    const [hours, minutes] = hhmm.split(':').map(Number);
+    const timeParts = hhmm.match(/(\d+):(\d+)/);
+    if (!timeParts) return null;
+
+    const [, hoursStr, minutesStr] = timeParts;
+    const hours = parseInt(hoursStr, 10);
+    const minutes = parseInt(minutesStr, 10);
+
     if (isNaN(hours) || isNaN(minutes)) return null;
     
     let baseDate: Date;
@@ -38,10 +44,11 @@ function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, p
         baseDate = startOfDay(referenceDate);
     }
 
-    let currentTime = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes);
-
+    // Create date as UTC to avoid timezone shifts. We treat the input time as the literal time.
+    let currentTime = new Date(Date.UTC(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes));
+    
     if (prevOpEndTime && currentTime < prevOpEndTime && prevOpEndTime.getTime() - currentTime.getTime() > 12 * 60 * 60 * 1000) {
-        currentTime.setDate(currentTime.getDate() + 1);
+        currentTime.setUTCDate(currentTime.getUTCDate() + 1);
     }
     
     return currentTime;
@@ -95,7 +102,7 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
             }
             
             if (endTime < startTime) {
-                endTime.setDate(endTime.getDate() + 1);
+                endTime.setUTCDate(endTime.getUTCDate() + 1);
             }
             const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60);
 
@@ -182,8 +189,12 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
 
     // Post-process to calculate sequenceInCaster based on a "production day" (8am to 8am)
     const getProductionDayKey = (date: Date): string => {
-        const shiftedDate = subHours(date, 8); // Shift time back by 8 hours
-        return format(shiftedDate, 'yyyy-MM-dd');
+        // Since the date is UTC, we use UTC methods
+        const checkDate = new Date(date);
+        if (checkDate.getUTCHours() < 8) {
+            checkDate.setUTCDate(checkDate.getUTCDate() - 1);
+        }
+        return `${checkDate.getUTCFullYear()}-${String(checkDate.getUTCMonth() + 1).padStart(2, '0')}-${String(checkDate.getUTCDate()).padStart(2, '0')}`;
     };
     
     // Group heats by casting machine and then by production day

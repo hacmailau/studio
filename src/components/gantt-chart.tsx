@@ -134,7 +134,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       const chartSvg = chartSvgElement.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
-      const xScale = d3.scaleTime().domain([fullTimeDomainStart, fullTimeDomainEnd]).range([0, width]);
+      const xScale = d3.scaleUtc().domain([fullTimeDomainStart, fullTimeDomainEnd]).range([0, width]);
       const yScale = d3.scaleBand().domain(unitOrder).range([0, height]).paddingInner(barPadding / (barHeight + barPadding)).paddingOuter(0.2);
 
       // --- Draw Y-Axis in its own SVG ---
@@ -155,14 +155,14 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       const grid = chartSvg.append("g")
         .attr("class", "grid")
         .attr("transform", `translate(0,${height})`)
-        .call(d3.axisBottom(xScale).ticks(d3.timeMinute.every(30)).tickSize(-height).tickFormat(() => ""));
+        .call(d3.axisBottom(xScale).ticks(d3.utcMinute.every(30)).tickSize(-height).tickFormat(() => ""));
       
       grid.selectAll("line").attr("stroke", "hsl(var(--border))").style("opacity", 0.5);
       grid.select(".domain").remove();
 
       const xAxis = d3.axisBottom(xScale)
-        .tickFormat(d3.timeFormat("%H:%M") as (d: Date | { valueOf(): number; }, i: number) => string)
-        .ticks(d3.timeHour.every(1));
+        .tickFormat(d3.utcFormat("%H:%M") as (d: Date | { valueOf(): number; }, i: number) => string)
+        .ticks(d3.utcHour.every(1));
         
       chartSvg.append("g")
         .attr("class", "axis text-xs text-muted-foreground")
@@ -172,8 +172,8 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .attr("stroke", "hsl(var(--border))");
         
       const dateAxis = d3.axisBottom(xScale)
-        .ticks(d3.timeDay.every(1))
-        .tickFormat(d3.timeFormat("%d/%m/%Y") as (d: Date | { valueOf(): number; }, i: number) => string);
+        .ticks(d3.utcDay.every(1))
+        .tickFormat(d3.utcFormat("%d/%m/%Y") as (d: Date | { valueOf(): number; }, i: number) => string);
 
       chartSvg.append("g")
         .attr("class", "axis date-axis text-xs text-muted-foreground")
@@ -234,8 +234,8 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
             <div class="font-bold">Mẻ: ${d.Heat_ID} (#${d.sequenceInCaster})</div>
             <div>Thiết bị: ${d.unit}</div>
             <hr class="my-1"/>
-            <div>Bắt đầu: ${format(d.startTime, 'HH:mm dd/MM')}</div>
-            <div>Kết thúc: ${format(d.endTime, 'HH:mm dd/MM')}</div>
+            <div>Bắt đầu: ${d3.utcFormat('%H:%M %d/%m')(d.startTime)}</div>
+            <div>Kết thúc: ${d3.utcFormat('%H:%M %d/%m')(d.endTime)}</div>
             <div>Thời gian: ${d.Duration_min} phút</div>
         `))
         .on("mouseleave", mouseleave);
@@ -332,7 +332,3 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
     </div>
   );
 }
-
-
-    
-    

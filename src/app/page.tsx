@@ -24,6 +24,7 @@ import { groupBy } from "lodash";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { processGoogleSheetAction, uploadHeatsAction } from "./actions";
+import * as d3 from 'd3';
 
 
 interface OpStat {
@@ -116,10 +117,14 @@ export default function Home() {
     const end = dateRange.to ? startOfDay(dateRange.to) : start;
 
     return ganttData.filter(heat => 
-        heat.operations.some(op => 
-            isWithinInterval(op.startTime, { start, end: addDays(end, 1) }) || 
-            isWithinInterval(op.endTime, { start, end: addDays(end, 1) })
-        )
+        heat.operations.some(op => {
+            const opStart = op.startTime.getTime();
+            const opEnd = op.endTime.getTime();
+            const intervalStart = start.getTime();
+            const intervalEnd = addDays(end, 1).getTime();
+            
+            return opStart < intervalEnd && opEnd > intervalStart;
+        })
     );
   }, [ganttData, dateRange]);
 
@@ -365,6 +370,7 @@ export default function Home() {
     document.body.removeChild(link);
   };
 
+  const formatUtcDate = d3.utcFormat('%H:%M');
 
   return (
     <div className="flex flex-col min-h-screen bg-muted/20">
@@ -680,8 +686,8 @@ export default function Home() {
                                 {selectedHeatDetails.operations.map((op, index) => (
                                     <TableRow key={index}>
                                         <TableCell className="font-medium">{op.unit}</TableCell>
-                                        <TableCell>{format(op.startTime, 'HH:mm')}</TableCell>
-                                        <TableCell>{format(op.endTime, 'HH:mm')}</TableCell>
+                                        <TableCell>{formatUtcDate(op.startTime)}</TableCell>
+                                        <TableCell>{formatUtcDate(op.endTime)}</TableCell>
                                         <TableCell className="text-right">{op.Duration_min}</TableCell>
                                         <TableCell className="text-right">{op.idleTimeMinutes ? op.idleTimeMinutes : '-'}</TableCell>
                                     </TableRow>
@@ -761,5 +767,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
