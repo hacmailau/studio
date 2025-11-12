@@ -1,9 +1,9 @@
 
 "use client";
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect } from 'react';
 import * as d3 from 'd3';
-import { GanttHeat, Operation } from '@/lib/types';
+import { GanttHeat } from '@/lib/types';
 import _ from 'lodash';
 import type { TimeRange } from '@/app/page';
 import { format } from 'date-fns';
@@ -30,68 +30,56 @@ const CASTER_COLORS: { [key: string]: string } = {
     BCM3: "#E53935",
 };
 
-// Function to get color based on caster
 function getColor(caster: string | undefined): { bg: string; text: string } {
     const bgColor = caster ? CASTER_COLORS[caster] ?? '#cccccc' : '#cccccc';
-
-    // Simplified lightness check for hex colors
     const hex = bgColor.replace('#', '');
     const r = parseInt(hex.substring(0, 2), 16);
     const g = parseInt(hex.substring(2, 4), 16);
     const b = parseInt(hex.substring(4, 6), 16);
     const brightness = (r * 299 + g * 587 + b * 114) / 1000;
     const textColor = brightness > 150 ? '#0A0A0A' : '#FFFFFF';
-
     return { bg: bgColor, text: textColor };
 }
 
-// Function to determine text color based on background lightness
-function getContrastingTextColor(lightness: number): string {
-    return lightness > 0.6 ? '#0A0A0A' : '#FFFFFF';
-}
-
 export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatId }: GanttChartProps) {
+  const yAxisRef = useRef<SVGSVGElement>(null);
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
+  const chartSvgRef = useRef<SVGSVGElement | null>(null);
 
-  // Effect for updating styles on selection change
   useEffect(() => {
-    if (!svgRef.current) return;
-
-    const svg = d3.select(svgRef.current);
+    if (!chartSvgRef.current) return;
+    const svg = d3.select(chartSvgRef.current);
     
-    // Fade non-selected elements
     svg.selectAll("rect.bar, g.bar-label")
        .transition().duration(300)
        .style("opacity", (d: any) => selectedHeatId === null || d.Heat_ID === selectedHeatId ? 1 : 0.45);
 
-    // Show/hide lineage links
     svg.selectAll("line.link")
         .transition().duration(300)
         .style("opacity", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 0.9 : 0.3)
         .attr("stroke-width", (d: any) => selectedHeatId !== null && d.Heat_ID === selectedHeatId ? 2 : 1.5);
-
-
   }, [selectedHeatId, heats]);
 
-
-  // Effect for drawing the chart
   useEffect(() => {
-    if (!chartContainerRef.current || !tooltipRef.current) return;
+    if (!chartContainerRef.current || !tooltipRef.current || !yAxisRef.current) return;
     
+    const cleanup = () => {
+        d3.select(chartContainerRef.current).select("svg").remove();
+        d3.select(yAxisRef.current).selectAll("*").remove();
+    };
+
     if (heats.length === 0) {
-      if (chartContainerRef.current) {
-         d3.select(chartContainerRef.current).select("svg").remove();
-      }
-      return;
+        cleanup();
+        return;
     }
 
     const drawD3Gantt = () => {
-      const chartOutputEl = chartContainerRef.current!;
-      const tooltipEl = d3.select(tooltipRef.current);
+      cleanup();
       
-      d3.select(chartOutputEl).select("svg").remove();
+      const chartOutputEl = chartContainerRef.current!;
+      const yAxisEl = yAxisRef.current!;
+      const tooltipEl = d3.select(tooltipRef.current);
 
       const allOpsWithHeatInfo = heats.flatMap(heat => 
         heat.operations.map(op => ({
@@ -101,9 +89,9 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
             castingMachine: heat.castingMachine,
             sequenceInCaster: heat.sequenceInCaster,
         }))
-      ).sort((a, b) => b.startTime.getTime() - a.startTime.getTime()); // Sort descending so earliest start is rendered last (on top)
+      ).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
       
-      if(allOpsWithHeatInfo.length === 0) return;
+      if (allOpsWithHeatInfo.length === 0) return;
 
       const { minTime, maxTime } = allOpsWithHeatInfo.reduce((acc, op) => ({
           minTime: d3.min([acc.minTime, op.startTime])!,
@@ -126,7 +114,8 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       const fullTimeDomainStart = d3.timeMinute.offset(minTime, -15);
       const fullTimeDomainEnd = d3.timeMinute.offset(maxTime, 15);
       
-      const margin = { top: 30, right: 40, bottom: 50, left: 60 };
+      const margin = { top: 30, right: 40, bottom: 50, left: 0 }; // left margin is handled by y-axis container
+      const yAxisWidth = 60;
       const containerWidth = chartOutputEl.clientWidth;
       const barHeight = 28;
       const barPadding = 8;
@@ -136,7 +125,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       const visibleTimeMinutes = timeRange * 60;
       const width = Math.max(containerWidth, containerWidth * (totalTimeMinutes / visibleTimeMinutes));
 
-      const svgElement = d3.select(chartOutputEl)
+      const chartSvgElement = d3.select(chartOutputEl)
         .append("svg")
         .attr("width", width + margin.left + margin.right)
         .attr("height", height + margin.top + margin.bottom)
@@ -146,16 +135,30 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
             }
         });
       
-      svgRef.current = svgElement.node();
+      chartSvgRef.current = chartSvgElement.node();
 
-      const svg = svgElement.append("g")
+      const chartSvg = chartSvgElement.append("g")
         .attr("transform", `translate(${margin.left},${margin.top})`);
 
       const xScale = d3.scaleTime().domain([fullTimeDomainStart, fullTimeDomainEnd]).range([0, width]);
       const yScale = d3.scaleBand().domain(UNIT_ORDER).range([0, height]).paddingInner(barPadding / (barHeight + barPadding)).paddingOuter(0.2);
 
-      // Add subtle grid lines
-      const grid = svg.append("g")
+      // --- Draw Y-Axis in its own SVG ---
+      const yAxisSvg = d3.select(yAxisEl)
+          .attr("width", yAxisWidth)
+          .attr("height", height + margin.top + margin.bottom)
+          .append("g")
+          .attr("transform", `translate(${yAxisWidth - 1},${margin.top})`); // Position it to the right edge
+
+      const yAxis = d3.axisLeft(yScale);
+      yAxisSvg.append("g")
+        .attr("class", "axis text-xs text-muted-foreground")
+        .call(yAxis)
+        .call(g => g.select(".domain").remove()) // remove domain line
+        .selectAll("line").remove(); // remove ticks
+      // --- End Y-Axis Drawing ---
+
+      const grid = chartSvg.append("g")
         .attr("class", "grid")
         .attr("transform", `translate(0,${height})`)
         .call(d3.axisBottom(xScale).ticks(d3.timeMinute.every(30)).tickSize(-height).tickFormat(() => ""));
@@ -163,12 +166,11 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       grid.selectAll("line").attr("stroke", "hsl(var(--border))").style("opacity", 0.5);
       grid.select(".domain").remove();
 
-
       const xAxis = d3.axisBottom(xScale)
         .tickFormat(d3.timeFormat("%H:%M") as (d: Date | { valueOf(): number; }, i: number) => string)
         .ticks(d3.timeHour.every(1));
         
-      svg.append("g")
+      chartSvg.append("g")
         .attr("class", "axis text-xs text-muted-foreground")
         .attr("transform", `translate(0,${height})`)
         .call(xAxis)
@@ -179,19 +181,12 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .ticks(d3.timeDay.every(1))
         .tickFormat(d3.timeFormat("%d/%m/%Y") as (d: Date | { valueOf(): number; }, i: number) => string);
 
-      svg.append("g")
+      chartSvg.append("g")
         .attr("class", "axis date-axis text-xs text-muted-foreground")
         .attr("transform", `translate(0, ${height + 25})`)
         .call(dateAxis)
         .call(g => g.select(".domain").remove())
         .selectAll("line").remove();
-
-      const yAxis = d3.axisLeft(yScale);
-      svg.append("g")
-        .attr("class", "axis text-xs text-muted-foreground")
-        .call(yAxis)
-        .selectAll("path, line")
-        .attr("stroke", "hsl(var(--border))");
 
       const handleBarClick = (event: MouseEvent, d: any) => {
           event.stopPropagation();
@@ -207,8 +202,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       };
       const mouseleave = () => tooltipEl.style("opacity", 0);
 
-      // Draw links first (behind bars)
-      svg.append("g")
+      chartSvg.append("g")
         .selectAll("line.link")
         .data(linksData)
         .enter()
@@ -224,8 +218,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .style("opacity", 0.3) 
         .style("pointer-events", "none");
 
-      // Draw bars
-      const bars = svg.append("g")
+      chartSvg.append("g")
         .selectAll("rect.bar")
         .data(allOpsWithHeatInfo)
         .enter()
@@ -253,8 +246,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         `))
         .on("mouseleave", mouseleave);
 
-      // Draw labels on bars
-      const labels = svg.append("g")
+      const labels = chartSvg.append("g")
         .selectAll("g.bar-label")
         .data(allOpsWithHeatInfo)
         .enter()
@@ -274,26 +266,19 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
       labels.append("text")
         .attr("class", "sequence-label")
         .attr("alignment-baseline", "middle")
-        .text(d => {
-            // Only show sequence label for Caster units
-            if (d.group === 'CASTER') {
-                return ` (#${d.sequenceInCaster})`;
-            }
-            return '';
-        })
+        .text(d => d.group === 'CASTER' ? ` (#${d.sequenceInCaster})` : '')
         .attr("font-size", "12px")
         .attr("font-weight", 400)
         .attr("fill", d => getColor(d.castingMachine).text)
-        .attr("dx", d => (d.Heat_ID.length * 7)); // Approximate offset
+        .attr("dx", d => (d.Heat_ID.length * 7));
 
-      // Hide labels that don't fit
       labels.style("opacity", function(d) {
           const barWidth = xScale(d.endTime) - xScale(d.startTime);
-          const labelWidth = this.getBBox().width + 16; // Add padding
+          const labelWidth = this.getBBox().width + 16;
           return barWidth > labelWidth ? 1 : 0;
       });
         
-      chartOutputEl.style.width = `${containerWidth}px`;
+      chartOutputEl.style.width = `${containerWidth - yAxisWidth}px`;
       chartOutputEl.style.overflowX = 'auto';
     };
 
@@ -313,7 +298,7 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
   }, [heats, timeRange]);
 
   return (
-    <>
+    <div className="flex w-full">
       <style jsx global>{`
         .d3-tooltip {
             position: absolute;
@@ -341,9 +326,18 @@ export function GanttChart({ data: heats, timeRange, onHeatSelect, selectedHeatI
         .link {
             transition: opacity 0.3s ease, stroke-width 0.3s ease;
         }
+        .axis .tick text {
+            text-anchor: end;
+        }
       `}</style>
-      <div ref={chartContainerRef} className="w-full overflow-x-auto" />
+      <div className="sticky left-0 bg-card z-10 border-r">
+          <svg ref={yAxisRef}></svg>
+      </div>
+      <div ref={chartContainerRef} className="flex-grow overflow-x-auto" />
       <div ref={tooltipRef} className="d3-tooltip" />
-    </>
+    </div>
   );
 }
+
+
+    
