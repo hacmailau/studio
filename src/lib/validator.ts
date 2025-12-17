@@ -45,7 +45,7 @@ function parseTimeWithDate(dateStr: string, hhmm: string, referenceDate: Date, p
     }
 
     // Create date as UTC to avoid timezone shifts. We treat the input time as the literal time.
-    let currentTime = new Date(Date.UTC(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes));
+    let currentTime = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes);
     
     if (prevOpEndTime && currentTime < prevOpEndTime && prevOpEndTime.getTime() - currentTime.getTime() > 12 * 60 * 60 * 1000) {
         currentTime.setUTCDate(currentTime.getUTCDate() + 1);
@@ -233,6 +233,5 @@ export function validateAndTransform(rows: ExcelRow[]): { validHeats: GanttHeat[
             });
         }
     }
-
     return { validHeats, errors };
 }
